@@ -6,9 +6,9 @@
 
 | 파일 | 목적 | 패턴 |
 |---|---|---|
-| `baseline.js` | 평소 트래픽 재현 | 50 VUs, 5분 |
-| `peak.js` | 피크 트래픽 (이벤트성 부하) | 5분 ramp-up → 200 VUs 10분 → ramp-down |
-| `soak.js` | 장시간 안정성 (메모리 누수 검증) | 30 VUs, 2시간 |
+| `baseline.js` | 현재는 `/actuator/health` smoke, Phase 2에서 주문 happy path로 전환 | 50 VUs, 5분 |
+| `peak.js` | 현재는 `/actuator/health` peak smoke, Phase 2에서 이벤트성 주문 부하로 전환 | 5분 ramp-up → 200 VUs 10분 → ramp-down |
+| `soak.js` | 현재는 `/actuator/health` soak smoke, Phase 2에서 장시간 주문 부하로 전환 | 30 VUs, 2시간 |
 
 ## 실행
 
@@ -18,6 +18,12 @@ k6 run load/baseline.js
 
 # Prometheus로 메트릭 송신
 k6 run --out experimental-prometheus-rw=http://localhost:9090/api/v1/write load/baseline.js
+```
+
+`BASE_URL`로 대상 서비스를 바꿀 수 있습니다.
+
+```bash
+BASE_URL=http://localhost:8081 k6 run load/baseline.js
 ```
 
 ## TODO (Phase 2)

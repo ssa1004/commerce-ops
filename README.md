@@ -1,11 +1,24 @@
 # mini-shop-observability
 
-> 작은 이커머스 마이크로서비스를 직접 운영하면서, 그 위에 **자체 Spring Boot 운영 라이브러리**를 만들고, 발생하는 트러블을 **케이스 스터디**로 쌓는 플레이그라운드.
+> 작은 이커머스 마이크로서비스를 직접 운영하면서 **관측성 인프라**, **Spring Boot 운영 라이브러리**, **장애 분석 케이스 스터디**를 함께 쌓는 포트폴리오 프로젝트.
 
 이 레포의 목적은 두 가지입니다.
 
-1. **포트폴리오** — 실제로 돌아가는 마이크로서비스 + 풀 옵저버빌리티 스택을 한 줄로 띄워서 보여줄 수 있다.
-2. **개인 학습** — 시니어 백엔드 + DevOps 역량을 "운영 경험"의 형태로 축적한다.
+1. **포트폴리오** — 서비스 코드뿐 아니라 운영 설계, 관측성, 알람, 장애 대응 문서까지 한 저장소에서 보여준다.
+2. **개인 학습** — 백엔드와 DevOps 역량을 "실제 운영에서 무엇을 보고 어떻게 판단할 것인가"의 형태로 축적한다.
+
+## Current Status
+
+현재 저장소는 **Phase 0 스캐폴드 + 관측성 인프라 설정** 단계입니다. Spring Boot 서비스 소스는 아직 생성 전이며, `services/`와 `modules/` 아래 README는 구현 계획과 설계 기준을 설명합니다.
+
+| 영역 | 현재 상태 |
+|---|---|
+| Docker Compose infra | PostgreSQL, Redis, Kafka, Prometheus, Loki, Tempo, Grafana, Alertmanager 구성 |
+| Grafana dashboard | Prometheus 자체 상태를 보는 infra overview dashboard 프로비저닝 |
+| Service source | Phase 1에서 생성 예정 |
+| Custom modules | Phase 3에서 구현 예정인 운영 라이브러리 설계 문서 |
+| Load / chaos | 시나리오 템플릿과 실행 기준 정리 |
+| Case studies | 운영 회고 템플릿 준비 |
 
 ---
 
@@ -35,26 +48,29 @@
               └──────────┘
 ```
 
-- **Services**: `order` / `payment` / `inventory` (Spring Boot 3, Java 21)
+- **Target services**: `order` / `payment` / `inventory` (Spring Boot 3, Java 21)
 - **Data**: PostgreSQL (per-service), Redis, Kafka
 - **Observability**: OpenTelemetry → Prometheus(metrics) + Loki(logs) + Tempo(traces) → Grafana
 - **Custom modules**: `modules/` 아래의 자체 Spring Boot 운영 라이브러리들이 서비스에 적용됨
 - **Load / Chaos**: k6 시나리오, 장애 주입 가이드
 
-자세한 데이터 흐름과 설계 결정은 [ARCHITECTURE.md](ARCHITECTURE.md) 참고.
+자세한 목표 구조와 설계 결정은 [ARCHITECTURE.md](ARCHITECTURE.md) 참고.
 
 ---
 
 ## Quick Start
 
-> **TODO**: Phase 1 완료 후 한 줄 실행 가능하도록 정리
+현재 단계에서 바로 실행 가능한 범위는 **공통 인프라 스택**입니다.
 
 ```bash
-# 인프라(옵저버빌리티 스택 + 의존성) 띄우기
 docker compose -f infra/docker-compose.yml up -d
+docker compose -f infra/docker-compose.yml ps
+```
 
-# 서비스 빌드 & 실행 (Phase 1 이후)
-./gradlew bootRun
+설정 파일만 빠르게 검증하려면:
+
+```bash
+docker compose -f infra/docker-compose.yml config
 ```
 
 확인할 곳:
@@ -65,6 +81,8 @@ docker compose -f infra/docker-compose.yml up -d
 | http://localhost:9090 | Prometheus |
 | http://localhost:3200 | Tempo |
 | http://localhost:9093 | Alertmanager |
+
+서비스 실행과 `./gradlew bootRun`은 Phase 1에서 Spring Boot 프로젝트가 생성된 뒤 추가됩니다. 인프라 실행 세부 내용은 [infra/README.md](infra/README.md)를 참고하세요.
 
 ---
 
@@ -82,6 +100,18 @@ mini-shop-observability/
 ├── case-studies/        # ⭐ 실제 운영하며 발견한 케이스 회고
 └── .github/workflows/   # CI
 ```
+
+---
+
+## Review Path
+
+포트폴리오 검토자가 짧은 시간 안에 의도를 파악할 수 있도록 아래 순서로 문서를 배치했습니다.
+
+1. [ARCHITECTURE.md](ARCHITECTURE.md) — 목표 시스템 구조와 주요 데이터 흐름
+2. [docs/decision-log.md](docs/decision-log.md) — 기술 선택 이유
+3. [infra/README.md](infra/README.md) — 현재 실행 가능한 인프라와 검증 방법
+4. [modules/README.md](modules/README.md) — 직접 만들 운영 라이브러리 목록
+5. [case-studies/_template.md](case-studies/_template.md) — 장애 분석을 어떻게 남길지에 대한 기준
 
 ---
 

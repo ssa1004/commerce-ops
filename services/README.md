@@ -1,6 +1,6 @@
 # Services
 
-세 개의 Spring Boot 마이크로서비스. 각 서비스는 독립 Gradle 프로젝트.
+세 개의 Spring Boot 마이크로서비스를 둘 예정입니다. 현재는 서비스별 설계 README만 있고, 실제 Gradle 프로젝트와 소스 코드는 Phase 1에서 생성합니다.
 
 | Service | Port | DB | 책임 |
 |---|---|---|---|
@@ -19,7 +19,7 @@
 
 ## Phase 1 생성 가이드
 
-각 서비스 디렉토리에서 (Phase 1 작업):
+각 서비스 디렉토리에서 Phase 1 작업으로 시작합니다. ADR-001은 현재 Spring Boot 3.x를 기준으로 하므로, Spring Initializr 기본값이 4.x로 바뀌어도 아래 예시는 3.x 라인으로 고정합니다. Phase 1 착수 시점에 Boot 4 전환 여부를 별도 결정한 뒤 생성합니다.
 
 ```bash
 # Spring Initializr로 시작 (예시)
@@ -27,7 +27,7 @@ curl https://start.spring.io/starter.zip \
   -d type=gradle-project-kotlin \
   -d language=java \
   -d javaVersion=21 \
-  -d bootVersion=3.3.0 \
+  -d bootVersion=3.5.14 \
   -d groupId=io.minishop \
   -d artifactId=order-service \
   -d dependencies=web,data-jpa,actuator,validation,flyway,postgresql \

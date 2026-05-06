@@ -9,6 +9,7 @@
 - [x] 디렉토리 구조 확정
 - [x] README / ARCHITECTURE / ROADMAP 작성
 - [x] 모듈·서비스 placeholder
+- [x] Prometheus 자체 상태를 보는 Grafana infra overview dashboard
 - [x] CI workflow 골격
 - [x] GitHub 레포 생성 + 첫 푸시
 
