@@ -1,0 +1,30 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-config:
+    name: Validate infra configs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate docker-compose
+        run: docker compose -f infra/docker-compose.yml config > /dev/null
+
+  build:
+    name: Build (Phase 1+)
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('settings.gradle*') != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+      - uses: gradle/actions/setup-gradle@v3
+      - name: Build
+        run: ./gradlew build --no-daemon
