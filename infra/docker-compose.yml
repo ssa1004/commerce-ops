@@ -1,0 +1,133 @@
+# Phase 0/1: 옵저버빌리티 스택 + 의존성 (DB/Redis/Kafka)
+# 서비스 컨테이너는 services/ 가 채워지면 개별 compose 파일로 추가합니다.
+#
+# 사용법: docker compose -f infra/docker-compose.yml up -d
+
+name: mini-shop-observability
+
+networks:
+  default:
+    name: mini-shop
+
+volumes:
+  pg-data:
+  prom-data:
+  grafana-data:
+  loki-data:
+  tempo-data:
+  kafka-data:
+
+services:
+  # ---------- Data ----------
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: mini
+      POSTGRES_PASSWORD: mini
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "mini"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  kafka:
+    image: bitnami/kafka:3.7
+    environment:
+      KAFKA_CFG_NODE_ID: "0"
+      KAFKA_CFG_PROCESS_ROLES: "controller,broker"
+      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
+      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "0@kafka:9093"
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka-data:/bitnami/kafka
+
+  # ---------- Telemetry pipeline ----------
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.99.0
+    command: ["--config=/etc/otel/config.yaml"]
+    volumes:
+      - ./otel-collector/config.yaml:/etc/otel/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+
+  # ---------- Storage ----------
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --enable-feature=otlp-write-receiver
+      - --storage.tsdb.path=/prometheus
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - prom-data:/prometheus
+    ports:
+      - "9090:9090"
+
+  loki:
+    image: grafana/loki:2.9.7
+    command: ["-config.file=/etc/loki/config.yml"]
+    volumes:
+      - ./loki/config.yml:/etc/loki/config.yml:ro
+      - loki-data:/loki
+    ports:
+      - "3100:3100"
+
+  tempo:
+    image: grafana/tempo:2.4.1
+    command: ["-config.file=/etc/tempo/config.yml"]
+    volumes:
+      - ./tempo/config.yml:/etc/tempo/config.yml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "3200:3200"
+
+  # ---------- UI / Alerts ----------
+  grafana:
+    image: grafana/grafana:10.4.2
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    volumes:
+      - ./alertmanager/config.yml:/etc/alertmanager/config.yml:ro
+    command:
+      - --config.file=/etc/alertmanager/config.yml
+    ports:
+      - "9093:9093"

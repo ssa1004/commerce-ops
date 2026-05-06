@@ -1,0 +1,43 @@
+# Gradle
+.gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+gradle-app.setting
+
+# IntelliJ / Eclipse / VSCode
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.settings/
+.classpath
+.project
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Java
+*.class
+hs_err_pid*
+replay_pid*
+
+# Env
+.env
+.env.local
+
+# Docker volumes (if mounted locally)
+infra/data/
+
+# Test reports
+build/reports/
+test-results/
+
+# Gradle wrapper artifacts (jar is committed; ignore others)
+.gradle-cache/

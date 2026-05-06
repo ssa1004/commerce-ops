@@ -1,0 +1,15 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: default
+  group_by: [alertname]
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 1h
+
+receivers:
+  - name: default
+    # Phase 2: Slack/Email/Webhook 추가
+    # webhook_configs:
+    #   - url: http://localhost:9999/hook
