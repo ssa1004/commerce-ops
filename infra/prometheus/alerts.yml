@@ -1,0 +1,10 @@
+groups:
+  - name: placeholder
+    rules: []
+# Phase 2에서 의미 있는 알람 5개를 채웁니다:
+#   - order-p99-latency-high
+#   - error-rate-spike
+#   - hikari-pool-saturation
+#   - kafka-consumer-lag
+#   - gc-pause-too-long
+# Runbook은 docs/runbook/ 에 동일한 이름의 파일로 작성.
