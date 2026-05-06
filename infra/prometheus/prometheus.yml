@@ -15,12 +15,14 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9090"]
 
-  # 서비스가 추가되면 여기에 등록.
-  # Phase 1: services/order-service 가 8081 포트로 뜨면 아래 주석 해제.
-  # - job_name: order-service
-  #   metrics_path: /actuator/prometheus
-  #   static_configs:
-  #     - targets: ["host.docker.internal:8081"]
+  - job_name: order-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:8081"]
+        labels:
+          application: order-service
+
+  # Phase 1 Step 2~3에서 활성화:
   # - job_name: payment-service
   #   metrics_path: /actuator/prometheus
   #   static_configs:
