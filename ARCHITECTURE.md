@@ -1,8 +1,10 @@
 # Architecture
 
+이 문서는 최종 목표 구조를 설명합니다. 현재 저장소는 Phase 0 스캐폴드와 인프라 설정 단계이며, 서비스 구현은 [ROADMAP.md](ROADMAP.md)의 Phase 1부터 진행합니다.
+
 ## Components
 
-### Services
+### Target Services
 
 | Service | 책임 | 주요 의존성 |
 |---|---|---|
@@ -29,7 +31,9 @@
 
 ## Data Flow
 
-### 주문 생성 (Happy Path)
+Phase 1에서는 구현 난이도를 낮추기 위해 `order-service`가 `payment-service`, `inventory-service`를 동기 REST로 호출합니다. 아래 흐름은 Phase 2에서 Kafka 이벤트 기반으로 전환한 뒤의 목표 구조입니다.
+
+### 주문 생성 Happy Path
 
 ```
 Client
@@ -50,7 +54,7 @@ inventory-service (consumer of OrderCreated)
   │ ⑦ Kafka publish: InventoryReserved
 ```
 
-이 흐름은 **분산 트레이싱이 가장 잘 보이는 시나리오**로, Tempo 데모의 메인 케이스가 됩니다.
+이 흐름은 분산 트레이싱이 가장 잘 보이는 시나리오로, Tempo 데모의 메인 케이스가 됩니다.
 
 ### 실패 시나리오 (의도적으로 보여줄 케이스)
 

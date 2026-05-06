@@ -14,17 +14,43 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate docker-compose
         run: docker compose -f infra/docker-compose.yml config > /dev/null
+      - name: Validate Prometheus config
+        run: |
+          docker run --rm --entrypoint promtool \
+            -v "$PWD/infra/prometheus:/etc/prometheus:ro" \
+            prom/prometheus:v2.51.0 \
+            check config /etc/prometheus/prometheus.yml
+      - name: Validate Alertmanager config
+        run: |
+          docker run --rm --entrypoint amtool \
+            -v "$PWD/infra/alertmanager:/etc/alertmanager:ro" \
+            prom/alertmanager:v0.27.0 \
+            check-config /etc/alertmanager/config.yml
 
   build:
     name: Build (Phase 1+)
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('settings.gradle*') != '' }}
     steps:
       - uses: actions/checkout@v4
+      - name: Detect Gradle project
+        id: gradle
+        shell: bash
+        run: |
+          if compgen -G "settings.gradle*" > /dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/setup-java@v4
+        if: steps.gradle.outputs.exists == 'true'
         with:
           java-version: '21'
           distribution: 'temurin'
       - uses: gradle/actions/setup-gradle@v3
+        if: steps.gradle.outputs.exists == 'true'
       - name: Build
+        if: steps.gradle.outputs.exists == 'true'
         run: ./gradlew build --no-daemon
+      - name: Skip build before Phase 1
+        if: steps.gradle.outputs.exists != 'true'
+        run: echo "No Gradle project yet; skipping Phase 1+ build."

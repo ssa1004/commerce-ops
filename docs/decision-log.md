@@ -11,6 +11,7 @@
 - **배경**: Virtual Threads, Pattern Matching 등 신규 문법 데모. Spring Boot 3는 Jakarta EE 9+ / OTel 친화
 - **대안**: Java 17 (LTS) — 안정적이지만 신규 어필 약함
 - **결과**: Phase 2에서 Virtual Threads on/off 비교 벤치 가능
+- **점검 메모**: Spring Initializr 기본값이 Boot 4.x로 올라간 시점에는 Phase 1 착수 전에 Boot 3 유지 vs Boot 4 전환을 다시 결정한다.
 
 ## ADR-002 — 서비스 간 통신: Kafka 비동기
 
