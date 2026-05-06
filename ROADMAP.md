@@ -19,14 +19,31 @@
 
 > "Compose 한 줄로 서비스가 뜨고 Grafana에 메트릭이 찍힌다"
 
-- [ ] `order-service` Spring Boot 3 프로젝트 생성 (Gradle, Java 21)
-- [ ] `payment-service` 동일
-- [ ] `inventory-service` 동일
-- [ ] 각 서비스에 Postgres 연결 + Flyway 마이그레이션
-- [ ] `POST /orders` happy-path 동작 (Kafka 없이 동기 호출만)
-- [ ] Micrometer + Prometheus exporter
-- [ ] `infra/docker-compose.yml`로 services + postgres + prometheus + grafana 한 번에 기동
-- [ ] Grafana 기본 JVM 대시보드 자동 프로비저닝
+수직 슬라이스 4-step.
+
+### Step 1 — order-service vertical ✅
+- [x] `order-service` Spring Boot 3 프로젝트 생성 (Gradle Kotlin DSL, Java 21 toolchain)
+- [x] Postgres 연결 + Flyway V1 (`orders`, `order_items`)
+- [x] `POST /orders`, `GET /orders/{id}` happy path
+- [x] Micrometer + Prometheus exporter (`/actuator/prometheus`)
+- [x] Testcontainers 통합 테스트
+- [x] Prometheus scrape 활성화 (host.docker.internal:8081)
+- [x] Grafana JVM+HTTP 대시보드 자동 프로비저닝
+
+### Step 2 — payment-service vertical
+- [ ] 동일 패턴 (init / Flyway / `POST /payments` / Micrometer / Testcontainers)
+- [ ] mock-pg 컨트롤러 (지연·실패율 환경변수)
+- [ ] Prometheus scrape 활성화 (8082)
+
+### Step 3 — inventory-service vertical
+- [ ] 동일 패턴
+- [ ] Redis + 분산락 (Redisson)
+- [ ] Prometheus scrape 활성화 (8083)
+
+### Step 4 — 동기 REST wiring
+- [ ] `order → payment` + `order → inventory` 호출
+- [ ] happy path 작동 (Compose 한 줄 → 주문 생성 → 결제·재고 흐름)
+- [ ] k6 baseline.js를 `POST /orders`로 갱신
 - [ ] README Quick Start 검증
 
 ---
