@@ -4,20 +4,23 @@
 
 ## By Date
 
-> 케이스가 추가되면 여기에 한 줄 요약과 함께 링크.
-
 | 날짜 | 제목 | 태그 | severity |
 |---|---|---|---|
+| 2026-05-07 | [결제 호출이 timeout으로 끊기는 동안 결제는 이미 SUCCESS였다](2026-05-07-payment-timeout-race.md) | timeout, in-doubt, distributed-systems | P1 |
 
 ## By Tag
 
-### `gc`
-### `memory-leak`
-### `n+1`
-### `hikari-pool`
-### `kafka-lag`
+### `timeout`
+- [2026-05-07 — payment timeout race](2026-05-07-payment-timeout-race.md)
+
+### `in-doubt` / `distributed-systems`
+- [2026-05-07 — payment timeout race](2026-05-07-payment-timeout-race.md)
+
 ### `latency-spike`
-### `deadlock`
+- [2026-05-07 — payment timeout race](2026-05-07-payment-timeout-race.md)
+
+### `gc` / `memory-leak` / `n+1` / `hikari-pool` / `kafka-lag` / `deadlock`
+*(아직 없음 — 카오스 시나리오를 추가할 때마다 채워집니다)*
 
 ## 작성 규칙
 
