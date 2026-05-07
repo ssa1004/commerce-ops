@@ -19,6 +19,7 @@ repositories {
 }
 
 extra["testcontainersVersion"] = "1.20.4"
+extra["otelInstrumentationVersion"] = "2.10.0"
 
 dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-actuator")
@@ -29,6 +30,9 @@ dependencies {
 	implementation("org.flywaydb:flyway-database-postgresql")
 
 	implementation("io.micrometer:micrometer-registry-prometheus")
+
+	implementation("io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter")
+	implementation("io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0")
 
 	runtimeOnly("org.postgresql:postgresql")
 
@@ -42,9 +46,11 @@ dependencies {
 dependencyManagement {
 	imports {
 		mavenBom("org.testcontainers:testcontainers-bom:${property("testcontainersVersion")}")
+		mavenBom("io.opentelemetry.instrumentation:opentelemetry-instrumentation-bom-alpha:${property("otelInstrumentationVersion")}-alpha")
 	}
 }
 
 tasks.withType<Test> {
 	useJUnitPlatform()
+	environment("OTEL_SDK_DISABLED", "true")
 }

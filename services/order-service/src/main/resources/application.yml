@@ -39,6 +39,30 @@ management:
       export:
         enabled: true
 
+# OpenTelemetry — auto-instrumentation으로 traces + logs를 OTLP로 내보냄.
+# 메트릭은 Prometheus(/actuator/prometheus)로 노출하므로 OTel 메트릭 export는 끔 (이중화 방지).
+otel:
+  service:
+    name: ${spring.application.name}
+  exporter:
+    otlp:
+      endpoint: http://${OTEL_HOST:localhost}:4318
+      protocol: http/protobuf
+  metrics:
+    exporter: none
+  logs:
+    exporter: otlp
+  traces:
+    exporter: otlp
+  resource:
+    attributes:
+      deployment.environment: ${DEPLOY_ENV:dev}
+  instrumentation:
+    micrometer:
+      enabled: false   # Micrometer ↔ OTel bridge 끔 (이미 Prometheus로 노출 중)
+    logback-appender:
+      experimental-log-attributes: true
+
 mini-shop:
   payment:
     url: ${PAYMENT_URL:http://localhost:8082}
@@ -50,7 +74,4 @@ mini-shop:
     connect-timeout-ms: ${INVENTORY_CONNECT_TIMEOUT_MS:1000}
     read-timeout-ms: ${INVENTORY_READ_TIMEOUT_MS:3000}
 
-logging:
-  pattern:
-    # Phase 2에서 correlation-mdc-starter가 traceId/spanId를 자동 주입
-    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+# 로그 패턴/appender는 src/main/resources/logback-spring.xml에서 정의.
