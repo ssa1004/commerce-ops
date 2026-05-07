@@ -117,6 +117,17 @@ public class OrderService {
                 .orElseThrow(() -> new OrderNotFoundException(id));
     }
 
+    /**
+     * 의도적 N+1 데모 경로. fetch join 없이 listing → 응답 직렬화에서 items lazy load.
+     * `slow-query-detector`가 이 패턴을 자동 감지해 `n_plus_one_total` 카운터를 올린다.
+     */
+    @Transactional(readOnly = true)
+    public List<Order> listRecent(int size) {
+        return orderRepository
+                .findAllByOrderByCreatedAtDesc(org.springframework.data.domain.PageRequest.of(0, size))
+                .getContent();
+    }
+
     private void reserveAll(Order order, List<CreateOrderItemRequest> items, List<ReservedItem> reservedAcc) {
         for (CreateOrderItemRequest item : items) {
             inventoryClient.reserve(item.productId(), order.getId(), item.quantity());

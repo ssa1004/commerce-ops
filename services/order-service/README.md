@@ -7,8 +7,8 @@
 | Method | Path | 상태 |
 |---|---|---|
 | POST | `/orders` | ✅ Step 4 (orchestration) |
-| GET | `/orders/{id}` | ✅ Step 1 |
-| GET | `/orders` (paging) | 백로그 |
+| GET | `/orders/{id}` | ✅ (fetch join, N+1 회피) |
+| GET | `/orders` (paging) | ✅ **의도적 N+1 데모** — `slow-query-detector`가 자동 감지 |
 
 ## 흐름
 
@@ -80,6 +80,9 @@ cd ../inventory-service && ./gradlew bootRun
 `/actuator/prometheus`:
 - 표준 JVM/HTTP
 - `order_orchestration_seconds{outcome=paid|out_of_stock|payment_declined|inventory_infra|payment_infra}` — outcome별 처리 시간 + 분포
+- `slow_query_total`, `n_plus_one_total`, `query_execution_seconds{outcome=ok|slow}` — `modules/slow-query-detector` v0.1이 노출 (composite build로 의존성 추가됨)
+- `outbox.publish{topic, outcome}` — Outbox 폴러
+- `inbox.consume{topic, outcome}`, `reconciliation.inconsistency{kind}` — 인박스/부정합 모니터링
 
 ## 테스트
 
