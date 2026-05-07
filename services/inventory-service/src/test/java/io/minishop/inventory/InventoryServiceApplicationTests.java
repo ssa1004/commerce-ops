@@ -1,5 +1,6 @@
 package io.minishop.inventory;
 
+import io.minishop.inventory.kafka.InventoryEventPublisher;
 import io.minishop.inventory.web.dto.InventoryResponse;
 import io.minishop.inventory.web.dto.ReleaseRequest;
 import io.minishop.inventory.web.dto.ReservationResponse;
@@ -13,6 +14,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -36,6 +38,10 @@ class InventoryServiceApplicationTests {
 		registry.add("spring.data.redis.host", redis::getHost);
 		registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
 	}
+
+	// 테스트에서 실제 Kafka가 없으므로 mock으로 교체. 발행 동작 자체는 별도 테스트 대상.
+	@MockitoBean
+	InventoryEventPublisher eventPublisher;
 
 	@Autowired
 	TestRestTemplate http;
