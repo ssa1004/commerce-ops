@@ -19,6 +19,7 @@ repositories {
 }
 
 extra["testcontainersVersion"] = "1.20.4"
+extra["otelInstrumentationVersion"] = "2.10.0"
 
 dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-actuator")
@@ -34,6 +35,9 @@ dependencies {
 	// Redisson for distributed locks (auto-configures from spring.data.redis.*)
 	implementation("org.redisson:redisson-spring-boot-starter:3.31.0")
 
+	implementation("io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter")
+	implementation("io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0")
+
 	runtimeOnly("org.postgresql:postgresql")
 
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
@@ -46,9 +50,11 @@ dependencies {
 dependencyManagement {
 	imports {
 		mavenBom("org.testcontainers:testcontainers-bom:${property("testcontainersVersion")}")
+		mavenBom("io.opentelemetry.instrumentation:opentelemetry-instrumentation-bom-alpha:${property("otelInstrumentationVersion")}-alpha")
 	}
 }
 
 tasks.withType<Test> {
 	useJUnitPlatform()
+	environment("OTEL_SDK_DISABLED", "true")
 }

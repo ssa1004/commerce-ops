@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <!-- 콘솔: 사람이 보는 로그. trace_id/span_id를 인라인으로 포함해
+         로컬 개발 중에도 trace 단위로 묶어서 보기 쉽다. -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{ISO8601} %-5level [%X{trace_id:-}/%X{span_id:-}] %thread %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- OTel: 로그 이벤트를 OTLP로 collector → Loki에 전달.
+         Span context가 자동으로 attach되어 Grafana에서 trace ↔ log 점프 가능. -->
+    <appender name="OTEL" class="io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender"/>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="OTEL"/>
+    </root>
+
+    <logger name="io.minishop" level="DEBUG"/>
+</configuration>

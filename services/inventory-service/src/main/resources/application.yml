@@ -43,6 +43,28 @@ management:
       export:
         enabled: true
 
+otel:
+  service:
+    name: ${spring.application.name}
+  exporter:
+    otlp:
+      endpoint: http://${OTEL_HOST:localhost}:4318
+      protocol: http/protobuf
+  metrics:
+    exporter: none
+  logs:
+    exporter: otlp
+  traces:
+    exporter: otlp
+  resource:
+    attributes:
+      deployment.environment: ${DEPLOY_ENV:dev}
+  instrumentation:
+    micrometer:
+      enabled: false
+    logback-appender:
+      experimental-log-attributes: true
+
 mini-shop:
   inventory:
     lock:
@@ -50,6 +72,4 @@ mini-shop:
       wait-millis: ${INVENTORY_LOCK_WAIT_MS:2000}
       lease-millis: ${INVENTORY_LOCK_LEASE_MS:10000}
 
-logging:
-  pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+# 로그 패턴/appender는 src/main/resources/logback-spring.xml에서 정의.

@@ -19,6 +19,7 @@ repositories {
 }
 
 extra["testcontainersVersion"] = "1.20.4"
+extra["otelInstrumentationVersion"] = "2.10.0"
 
 dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-actuator")
@@ -30,6 +31,10 @@ dependencies {
 
 	// Micrometer Prometheus exporter -> /actuator/prometheus
 	implementation("io.micrometer:micrometer-registry-prometheus")
+
+	// OpenTelemetry: traces (auto-instrument Spring web, JDBC, Kafka...) + log appender (OTLP -> Loki)
+	implementation("io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter")
+	implementation("io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0")
 
 	runtimeOnly("org.postgresql:postgresql")
 
@@ -43,9 +48,12 @@ dependencies {
 dependencyManagement {
 	imports {
 		mavenBom("org.testcontainers:testcontainers-bom:${property("testcontainersVersion")}")
+		mavenBom("io.opentelemetry.instrumentation:opentelemetry-instrumentation-bom-alpha:${property("otelInstrumentationVersion")}-alpha")
 	}
 }
 
 tasks.withType<Test> {
 	useJUnitPlatform()
+	// 테스트 중에는 OTel SDK 비활성화 (collector 미기동 환경에서 export 실패 로그 생략)
+	environment("OTEL_SDK_DISABLED", "true")
 }
