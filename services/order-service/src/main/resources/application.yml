@@ -39,6 +39,17 @@ management:
       export:
         enabled: true
 
+mini-shop:
+  payment:
+    url: ${PAYMENT_URL:http://localhost:8082}
+    connect-timeout-ms: ${PAYMENT_CONNECT_TIMEOUT_MS:1000}
+    # PG 호출이 약간 느릴 수 있으니 5s 정도 여유
+    read-timeout-ms: ${PAYMENT_READ_TIMEOUT_MS:5000}
+  inventory:
+    url: ${INVENTORY_URL:http://localhost:8083}
+    connect-timeout-ms: ${INVENTORY_CONNECT_TIMEOUT_MS:1000}
+    read-timeout-ms: ${INVENTORY_READ_TIMEOUT_MS:3000}
+
 logging:
   pattern:
     # Phase 2에서 correlation-mdc-starter가 traceId/spanId를 자동 주입
