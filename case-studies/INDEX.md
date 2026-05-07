@@ -27,4 +27,4 @@
 - 새 케이스는 [_template.md](_template.md) 복사해서 시작
 - 파일명: `YYYY-MM-DD-<short-slug>.md`
 - 작성 후 이 INDEX.md의 By Date / By Tag 양쪽에 링크 추가
-- 30분 이상 든 트러블슈팅이면 케이스로 남기기 (작은 거라도 자산)
+- 30분 이상 든 트러블슈팅은 케이스로 남기기

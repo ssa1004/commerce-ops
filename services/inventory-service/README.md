@@ -24,7 +24,7 @@
 
 이게 SAGA·재시도·Kafka 중복 메시지 어떤 상황에서도 재고가 음수로 가거나 두 배로 복구되는 것을 막는다.
 
-## 동시성 제어 (이중 안전망)
+## 동시성 제어 (2개 레이어)
 
 1. **Redisson 분산락** (`mini-shop.inventory.lock.*`) — 여러 인스턴스에서도 동일 productId 에 대한 동시 진입 차단. 락 → 트랜잭션 순서 (락 잡기 전에 트랜잭션을 안 열어 커넥션 풀 점유 최소화).
 2. **JPA `@Version`** (낙관적 락) — 락 timeout 으로 동시 진입이 발생해도 DB 레벨에서 한 번 더 막힘.
@@ -91,6 +91,6 @@ V2 시드: `productId=1001` 100개, `1002` 50개, `1003` 25개.
 - [x] `Inventory` + `InventoryReservation` 도메인 + 멱등 키
 - [x] `DistributedLockService` (Redisson 래퍼 + 메트릭)
 - [x] `InventoryService` (락 → 트랜잭션 순서, 멱등 reserve/release)
-- [x] `GlobalExceptionHandler` (의미 있는 HTTP 코드 매핑)
+- [x] `GlobalExceptionHandler` (도메인 예외 → HTTP 코드 매핑)
 - [x] Testcontainers 통합 테스트 (Postgres + Redis)
 - [x] Prometheus scrape 활성화 (8083)

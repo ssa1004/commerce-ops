@@ -9,7 +9,7 @@
 
 - **결정**: Java 21 LTS (Long Term Support — 장기 지원 버전), Spring Boot 3.x 사용
 - **배경**: Virtual Threads (JVM 차원의 가벼운 스레드, 동시성 비용을 크게 낮춤), Pattern Matching 등 신규 문법 데모. Spring Boot 3 는 Jakarta EE 9+ (구 javax → jakarta 패키지 이전 후 버전) / OTel 친화
-- **대안**: Java 17 (LTS) — 안정적이지만 신규 어필 약함
+- **대안**: Java 17 (LTS) — 안정적이지만 21 의 신규 문법 (Virtual Threads 등) 데모는 못함
 - **결과**: Phase 2 에서 Virtual Threads on/off 비교 벤치 가능
 - **점검 메모**: Spring Initializr 기본값이 Boot 4.x 로 올라간 시점에는 Phase 1 착수 전에 Boot 3 유지 vs Boot 4 전환을 다시 결정한다.
 
@@ -80,7 +80,7 @@
 
 - **결정**: order-service 가 `payment.events` / `inventory.events` 를 consume 해서 `payment_inbox` / `inventory_inbox` 에 멱등 (UNIQUE 키) 저장. 별도 스케줄 잡 (정기 실행되는 백그라운드 작업) 이 inbox 와 Order 상태를 비교해 *부정합* (서로 다른 진실을 가진 상태) 을 카운터로 노출.
 - **배경**: [2026-05-07 케이스 스터디](../case-studies/2026-05-07-payment-timeout-race.md) 에서 timeout in-doubt 윈도우 (호출자는 끊겼는데 피호출자는 작업을 끝내버려 결과를 알 수 없는 구간) 때문에 `Order=FAILED, Payment=SUCCESS` 부정합이 났다. 동기 호출의 본질적 함정이라 *발생 자체를 막기* 보다 *발생 사실을 모니터링* 하는 게 현실적.
-- **대안 1 — 자동 보정**: 위험하다. 부정합이 진짜인지 일시적 경합 (race — 서로 다른 시점의 상태가 비교되는 일시 현상) 인지 즉답 어렵다. 사람 개입을 위한 신호로 두는 편이 안전.
+- **대안 1 — 자동 보정**: 위험하다. 실제 부정합인지 일시적 경합 (race — 서로 다른 시점의 상태가 비교되는 일시 현상) 인지 즉시 구별이 어렵다. 사람 개입을 위한 신호로 두는 편이 안전.
 - **대안 2 — 받자마자 Order 에 반영 (Step 3c 가 갈 방향)**: 더 깊은 변화. 우선 모니터링 신호부터 두고 본격 비동기 전환은 후속.
 - **결과**: `reconciliation.inconsistency{kind=order_failed_payment_succeeded}` 카운터 노출. 이 값 > 0 일 때 알람을 P1 으로 받기만 하면 즉각 알게 된다. inbox 자체는 도메인 진실이 아니라 *외부 신호의 거울* (다른 서비스가 보낸 이벤트의 사본일 뿐) 이라는 점을 코드 주석에서도 명시.
 

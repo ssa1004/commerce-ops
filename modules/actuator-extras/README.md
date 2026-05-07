@@ -2,7 +2,7 @@
 
 Spring Boot Actuator (Spring Boot 의 운영 상태 노출 모듈 — `/actuator/*` 경로) 에 운영에서 자주 필요한 정보를 추가하는 커스텀 엔드포인트 모음.
 
-## 왜 만드나
+## 배경
 
 - 기본 Actuator 는 `/health`, `/metrics` 정도. 운영 중 *지금 무슨 일이 일어나는지* 알기엔 부족
 - Hikari (DB 커넥션 풀) 의 active/idle/pending 상태, 트랜잭션 깊이, 스레드풀 큐 상태 등은 메트릭으로도 보지만 *지금 이 순간* 의 스냅샷을 보고 싶을 때가 많음

@@ -2,7 +2,7 @@
 
 OpenTelemetry **Trace ID** (요청 하나의 식별자) 를 SLF4J **MDC** (Mapped Diagnostic Context — 이 스레드의 키밸류 저장소, 로그 패턴에서 `%X{key}` 로 출력 가능) 에 자동 주입. 로그·트레이스·메트릭 상관관계가 단일 ID 로 연결되도록.
 
-## 왜 만드나
+## 배경
 
 - OTel auto-instrumentation 이 trace ID 는 만들어주지만, 로그 패턴에 자동으로 들어가진 않음
 - 매 서비스에서 `MDCInsertingServletFilter` 같은 boilerplate (반복적인 정형 코드) 가 반복
