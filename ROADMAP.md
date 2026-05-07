@@ -54,18 +54,37 @@
 
 ---
 
-## Phase 2 — Observability 완성 (3~4주)
+## Phase 2 — Observability 완성
 
 > "장애가 나면 어디가 아픈지 한 화면에서 보인다"
 
-- [ ] Kafka 도입 → 서비스 간 비동기 이벤트로 전환
-- [ ] OpenTelemetry Java agent 적용 (auto-instrumentation)
-- [ ] Tempo 연동 + Grafana에서 trace 조회
-- [ ] Loki + Promtail (또는 OTel logs) 적용 + 구조화 로그
-- [ ] Trace ID ↔ Log 상관관계 동작 확인
-- [ ] 의미 있는 알람 5개 정의 (p99 latency, error rate, Hikari saturation, GC pause, Kafka consumer lag)
-- [ ] k6 baseline 시나리오 1개 (`load/baseline.js`)
-- [ ] 첫 트레이스 분석 케이스 스터디 1개
+### Step 1 — OTel + Tempo + Loki + Trace↔Log 상관관계 ✅
+- [x] OpenTelemetry Spring Boot starter 적용 (3개 서비스)
+- [x] OTLP traces/logs export → otel-collector → Tempo/Loki
+- [x] `otel.metrics.exporter=none` (Micrometer Prometheus와 이중화 회피)
+- [x] logback-spring.xml: 콘솔 패턴에 `[trace_id/span_id]` 인라인 + `OpenTelemetryAppender`
+- [x] 테스트에서는 `OTEL_SDK_DISABLED=true`로 export 끔
+- [x] README에 trace ↔ log 점프 데모 가이드
+
+### Step 2 — 의미 있는 알람 5개 + Runbook
+- [ ] `infra/prometheus/alerts.yml` 채우기:
+  - order p99 latency high
+  - order error rate spike (5xx만)
+  - HikariCP pool saturation
+  - JVM GC pause too long
+  - inventory_lock_acquire timeout 비율 높음
+- [ ] alertmanager 라우팅 (webhook/slack 자리표)
+- [ ] `docs/runbook/` 알람별 5개 작성
+
+### Step 3 — Kafka 비동기 전환
+- [ ] OrderCreated / PaymentResult / InventoryReserved 이벤트
+- [ ] order-service Outbox 패턴 (가벼운 버전)
+- [ ] payment / inventory consumer로 흐름 전환
+- [ ] OTel auto-instrumentation으로 Kafka span 자동 전파 확인
+
+### Step 4 — 첫 트레이스 분석 케이스 스터디
+- [ ] 카오스 1개 (예: `MOCK_PG_LATENCY_MEAN_MS=1500`)
+- [ ] 트레이스 분석 → `case-studies/` 회고 1편
 
 ---
 

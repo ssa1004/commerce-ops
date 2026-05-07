@@ -47,3 +47,17 @@
 - **배경**: 진입 장벽 최소화. recruiter가 5분 안에 띄워볼 수 있어야 함
 - **대안**: 처음부터 Kubernetes — 학습/세팅 부담 큼
 - **결과**: README Quick Start 한 줄 실행 가능
+
+## ADR-007 — OTel: Spring Boot starter (Java agent 대신)
+
+- **결정**: `opentelemetry-spring-boot-starter` 의존성으로 자동 계측. Java agent (`-javaagent`)는 채택하지 않음.
+- **배경**: 데모 환경 진입장벽 최소화 + Spring 통합 깊이. agent는 운영에서의 표준이지만, 의존성-기반은 빌드/실행이 단순.
+- **대안**: OTel Java agent — `bootRun`에 `-javaagent=...` 부착 필요, 더 광범위한 자동계측, 코드 0줄 변경
+- **결과**: Phase 4에서 K8s 단계로 갈 때 agent 옵션을 추가 검토. 그때까지는 starter로 충분.
+
+## ADR-008 — OTel 메트릭 export는 끄고 Prometheus만 쓴다
+
+- **결정**: `otel.metrics.exporter=none`, `otel.instrumentation.micrometer.enabled=false`
+- **배경**: 메트릭은 Micrometer → `/actuator/prometheus` 경로가 이미 안정 가동 중. OTel 메트릭과 이중 노출하면 같은 메트릭이 두 이름으로 보여 대시보드 혼란.
+- **대안**: 모든 신호를 OTel collector로 단일화 → 일관성↑ 이지만 Micrometer 메트릭 이름 호환 깨짐 위험
+- **결과**: traces/logs만 OTel 경로, metrics는 Prometheus scrape. Phase 2 Step 2 알람 룰 작성도 기존 메트릭 이름 그대로 사용 가능.

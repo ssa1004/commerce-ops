@@ -15,6 +15,7 @@
 |---|---|
 | Docker Compose infra | PostgreSQL, Redis, Kafka, Prometheus, Loki, Tempo, Grafana, Alertmanager |
 | Grafana dashboards | Infra overview + JVM+HTTP (3개 서비스 통합 view) 자동 프로비저닝 |
+| OpenTelemetry | 3개 서비스 자동 계측 (web/JDBC/Redis), traces+logs OTLP→collector→Tempo/Loki, trace ↔ log 상관관계 |
 | Services | order / payment / inventory 모두 Spring Boot 3.5 + Java 21, Testcontainers 통합 테스트 포함 |
 | Order orchestration | reserve → pay → on-failure compensate (SAGA 동기 버전), `X-Order-Outcome` 헤더로 분류 |
 | Idempotency | inventory-service `(orderId, productId)` 단위 reserve/release 멱등 |
@@ -116,7 +117,16 @@ curl -s -X POST localhost:8081/orders \
 k6 run load/baseline.js
 ```
 
-→ Grafana → "JVM + HTTP" 대시보드에서 3개 서비스 메트릭 동시에 보기.
+### 5) 메트릭 / 로그 / 트레이스 한 화면에서 보기
+
+3개 서비스 모두 OpenTelemetry Spring Boot starter로 자동 계측되어 있습니다 (Phase 2 Step 1).
+
+- **메트릭** — Grafana → Dashboards → "JVM + HTTP"
+- **트레이스** — Grafana → Explore → Tempo. `POST /orders` 한 번이 `order → inventory.reserve → payment.charge → mock-pg`까지 한 trace로 묶여 보임.
+- **로그** — Grafana → Explore → Loki. 쿼리 예: `{service_name="order-service"}` 또는 trace ID로 필터.
+- **점프**: Tempo trace 패널에서 span → "Logs for this span" 버튼 → Loki로 해당 trace_id 로그 자동 필터. 역방향(로그 → trace)도 동일.
+
+서비스 콘솔에도 `[trace_id/span_id]`가 인라인으로 찍히므로 로컬 개발 중에도 grep 가능합니다.
 
 ---
 
