@@ -15,11 +15,11 @@
 
 ---
 
-## Phase 1 — MVP (목표: 3~4주)
+## Phase 1 — MVP ✅
 
 > "Compose 한 줄로 서비스가 뜨고 Grafana에 메트릭이 찍힌다"
 
-수직 슬라이스 4-step.
+수직 슬라이스 4-step. 모두 완료.
 
 ### Step 1 — order-service vertical ✅
 - [x] `order-service` Spring Boot 3 프로젝트 생성 (Gradle Kotlin DSL, Java 21 toolchain)
@@ -43,11 +43,14 @@
 - [x] `inventory_lock_acquire_seconds{outcome}` 메트릭
 - [x] Prometheus scrape 활성화 (8083)
 
-### Step 4 — 동기 REST wiring
-- [ ] `order → payment` + `order → inventory` 호출
-- [ ] happy path 작동 (Compose 한 줄 → 주문 생성 → 결제·재고 흐름)
-- [ ] k6 baseline.js를 `POST /orders`로 갱신
-- [ ] README Quick Start 검증
+### Step 4 — 동기 REST wiring ✅
+- [x] order-service에 PaymentClient + InventoryClient (RestClient + 타임아웃)
+- [x] OrderService 오케스트레이션: reserve → pay → on-failure compensate (SAGA 동기 버전)
+- [x] HTTP 의미 매핑: 201 PAID / 402 PAYMENT_DECLINED / 409 OUT_OF_STOCK / 502 PAYMENT_INFRA / 503 INVENTORY_INFRA + `X-Order-Outcome` 헤더
+- [x] `order_orchestration_seconds{outcome}` 메트릭
+- [x] Testcontainers 통합 테스트: happy path / OUT_OF_STOCK 보상 / PAYMENT_DECLINED 보상
+- [x] k6 baseline.js → `POST /orders` happy path 시뮬레이션
+- [x] README Quick Start end-to-end 데모로 갱신
 
 ---
 
