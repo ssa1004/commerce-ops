@@ -38,6 +38,9 @@ dependencies {
 
 	implementation("org.springframework.kafka:spring-kafka")
 
+	// 자체 운영 라이브러리 (modules/slow-query-detector를 composite build로 참조)
+	implementation("io.minishop:slow-query-detector")
+
 	runtimeOnly("org.postgresql:postgresql")
 
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
