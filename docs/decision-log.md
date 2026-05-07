@@ -75,3 +75,11 @@
 - **배경**: 트랜잭션 producer/consumer + transactional commit은 운영 복잡도가 큼. 같은 효과를 도메인 멱등 키로 얻을 수 있다면 그쪽이 단순.
 - **대안**: Kafka transactions (read-process-write 원자성) — 효과 강력, 하지만 KIP-447 etc. 운영 노하우 필요.
 - **결과**: 같은 메시지가 두 번 와도 도메인이 동일 결과를 내도록 설계. Phase 4 카오스 시나리오에서 의도적 중복 메시지로 멱등성 검증 가능.
+
+## ADR-011 — Inbox 패턴 + reconciliation 잡으로 부정합을 잡는다
+
+- **결정**: order-service가 `payment.events` / `inventory.events`를 consume해서 `payment_inbox` / `inventory_inbox`에 멱등(UNIQUE 키) 저장. 별도 스케줄 잡이 inbox와 Order 상태를 비교해 *부정합*을 카운터로 노출.
+- **배경**: [2026-05-07 케이스 스터디](../case-studies/2026-05-07-payment-timeout-race.md)에서 timeout in-doubt 윈도우 때문에 `Order=FAILED, Payment=SUCCESS` 부정합이 났다. 동기 호출의 본질적 함정이라 *발생 자체를 막기*보다 *발생 사실을 모니터링*하는 게 현실적.
+- **대안 1 — 자동 보정**: 위험하다. 부정합이 진짜인지 일시적 race인지 즉답 어렵다. 사람 개입을 위한 신호로 두는 편이 안전.
+- **대안 2 — 받자마자 Order에 반영 (Step 3c가 갈 방향)**: 더 깊은 변화. 우선 모니터링 신호부터 두고 본격 async 전환은 후속.
+- **결과**: `reconciliation.inconsistency{kind=order_failed_payment_succeeded}` 카운터 노출. 이 값 > 0일 때 알람을 P1으로 받기만 하면 즉각 알게 된다. inbox 자체는 도메인 진실이 아니라 *외부 신호의 거울*이라는 점을 코드 주석에서도 명시.
