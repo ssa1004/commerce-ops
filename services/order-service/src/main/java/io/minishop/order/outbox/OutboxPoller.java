@@ -14,10 +14,13 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 
 /**
- * outbox에 쌓인 이벤트를 Kafka로 publish.
- * - 동시 인스턴스 안전: SELECT ... FOR UPDATE SKIP LOCKED (PostgreSQL).
- * - At-least-once: 발행 후 mark SENT 사이에 장애 → 재시도 시 동일 이벤트가 한 번 더 갈 수 있음. consumer 측 멱등성으로 흡수.
- * - 트레이스 연속성은 Phase 3 후속에서 보강 (현재는 polling 트레이스가 새로 시작).
+ * outbox 테이블에 쌓인 이벤트를 Kafka 로 publish.
+ * - 여러 인스턴스가 동시에 polling 해도 안전: SELECT ... FOR UPDATE SKIP LOCKED (PostgreSQL —
+ *   다른 트랜잭션이 잡고 있는 행은 건너뛰고 가져오는 옵션).
+ * - At-least-once (메시지가 최소 한 번은 도착, 가끔 중복): 발행 후 mark SENT 사이에 장애가 나면
+ *   재시도 시 동일 이벤트가 한 번 더 갈 수 있음. consumer 측 멱등성 (UNIQUE 제약 등) 으로 흡수.
+ * - 트레이스 연속성 (요청 trace 와 polling trace 를 한 흐름으로 잇는 것) 은 Phase 3 후속에서 보강
+ *   (현재는 polling trace 가 새로 시작).
  */
 @Component
 @ConditionalOnProperty(prefix = "mini-shop.outbox.poller", name = "enabled", havingValue = "true", matchIfMissing = true)

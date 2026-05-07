@@ -10,12 +10,12 @@
 
 ## 공통 스택
 
-- Java 21 / Spring Boot 3.x / Gradle (Kotlin DSL)
+- Java 21 / Spring Boot 3.x / Gradle (Kotlin DSL — Gradle 빌드 스크립트를 Kotlin 으로 작성하는 모드)
 - Spring Web, Data JPA, Validation
-- Flyway (migration)
+- Flyway (DB 마이그레이션 — 스키마 변경을 SQL 파일 시퀀스로 관리)
 - Spring Kafka (Phase 2부터)
-- Micrometer + OTel
-- Testcontainers (PostgreSQL, Kafka, Redis)
+- Micrometer + OTel (Micrometer 는 메트릭 facade, OTel 은 trace/log 표준)
+- Testcontainers (PostgreSQL, Kafka, Redis — 테스트 때 진짜 컨테이너를 띄움)
 
 ## Phase 1 생성 가이드
 

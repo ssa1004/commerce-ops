@@ -45,7 +45,8 @@ public class PaymentEventConsumer {
             return;
         }
 
-        // 멱등성: UNIQUE(payment_id) 덕분에 중복 처리 안 됨.
+        // 멱등성: UNIQUE(payment_id) 제약 덕분에 같은 이벤트가 두 번 와도 한 행만 남음.
+        // (Kafka 는 at-least-once 라 같은 메시지가 가끔 중복 도달함 — 그걸 여기서 흡수)
         if (repository.existsByPaymentId(event.paymentId())) {
             meterRegistry.counter("inbox.consume", Tags.of("topic", "payment.events", "outcome", "duplicate")).increment();
             return;
