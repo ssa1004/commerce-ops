@@ -66,15 +66,11 @@
 - [x] 테스트에서는 `OTEL_SDK_DISABLED=true`로 export 끔
 - [x] README에 trace ↔ log 점프 데모 가이드
 
-### Step 2 — 의미 있는 알람 5개 + Runbook
-- [ ] `infra/prometheus/alerts.yml` 채우기:
-  - order p99 latency high
-  - order error rate spike (5xx만)
-  - HikariCP pool saturation
-  - JVM GC pause too long
-  - inventory_lock_acquire timeout 비율 높음
-- [ ] alertmanager 라우팅 (webhook/slack 자리표)
-- [ ] `docs/runbook/` 알람별 5개 작성
+### Step 2 — 의미 있는 알람 5개 + Runbook ✅
+- [x] `infra/prometheus/alerts.yml` — 5개 룰 (3 그룹: latency-and-errors / runtime-saturation / business)
+- [x] alertmanager severity 라우팅 (P1 → critical / P2 → default), inhibit_rules로 P1 발화 시 동일 alertname의 P2 억제
+- [x] `docs/runbook/` 5개 (When/Impact/Diagnosis/Mitigation/Post-mortem 포맷)
+- [x] alert 룰의 `runbook_url`이 GitHub URL을 가리켜 alertmanager 메시지에서 바로 점프
 
 ### Step 3 — Kafka 비동기 전환
 - [ ] OrderCreated / PaymentResult / InventoryReserved 이벤트
