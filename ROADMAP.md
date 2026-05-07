@@ -30,10 +30,11 @@
 - [x] Prometheus scrape 활성화 (host.docker.internal:8081)
 - [x] Grafana JVM+HTTP 대시보드 자동 프로비저닝
 
-### Step 2 — payment-service vertical
-- [ ] 동일 패턴 (init / Flyway / `POST /payments` / Micrometer / Testcontainers)
-- [ ] mock-pg 컨트롤러 (지연·실패율 환경변수)
-- [ ] Prometheus scrape 활성화 (8082)
+### Step 2 — payment-service vertical ✅
+- [x] 동일 패턴 (init / Flyway / `POST /payments` / Micrometer / Testcontainers)
+- [x] mock-pg 컨트롤러 (latency mean/stddev, failure-rate, timeout-rate)
+- [x] PgClient (RestClient + 타임아웃) + 실패 처리 (HTTP 402)
+- [x] Prometheus scrape 활성화 (8082)
 
 ### Step 3 — inventory-service vertical
 - [ ] 동일 패턴
