@@ -36,10 +36,12 @@
 - [x] PgClient (RestClient + 타임아웃) + 실패 처리 (HTTP 402)
 - [x] Prometheus scrape 활성화 (8082)
 
-### Step 3 — inventory-service vertical
-- [ ] 동일 패턴
-- [ ] Redis + 분산락 (Redisson)
-- [ ] Prometheus scrape 활성화 (8083)
+### Step 3 — inventory-service vertical ✅
+- [x] 동일 패턴 (init / Flyway / Micrometer / Testcontainers)
+- [x] Redisson 분산락 + JPA `@Version` 이중 안전망
+- [x] (orderId, productId) 멱등 reserve/release
+- [x] `inventory_lock_acquire_seconds{outcome}` 메트릭
+- [x] Prometheus scrape 활성화 (8083)
 
 ### Step 4 — 동기 REST wiring
 - [ ] `order → payment` + `order → inventory` 호출
