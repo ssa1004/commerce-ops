@@ -8,6 +8,8 @@ import io.minishop.order.domain.OrderItem;
 import io.minishop.order.exception.OrchestrationException;
 import io.minishop.order.exception.OrchestrationException.Outcome;
 import io.minishop.order.exception.OrderNotFoundException;
+import io.minishop.order.kafka.dto.OrderEvent;
+import io.minishop.order.outbox.OutboxService;
 import io.minishop.order.repository.OrderRepository;
 import io.minishop.order.web.dto.CreateOrderItemRequest;
 import io.minishop.order.web.dto.CreateOrderRequest;
@@ -17,23 +19,21 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 주문 오케스트레이션. SAGA 패턴의 단순 동기 버전.
+ * 주문 오케스트레이션. SAGA 패턴의 단순 동기 버전 + Outbox로 lifecycle 이벤트 발행.
  *
- *   1. Order(PENDING) 저장
+ *   1. Order(PENDING) 저장 + outbox에 OrderCreated 기록 (같은 트랜잭션)
  *   2. 각 item에 대해 inventory-service.reserve 호출 (멱등 키: orderId+productId)
- *      재고 부족이면 즉시 중단하고 이미 예약된 것들을 release (보상)
  *   3. payment-service.charge 호출
- *      성공 → Order(PAID), 실패 → 모든 재고 release + Order(FAILED)
+ *   4. 성공 → markPaid + outbox.OrderPaid (같은 트랜잭션)
+ *      실패 → markFailed + outbox.OrderFailed + 재고 보상 release
  *
- * 멱등성:
- *   - inventory reserve/release는 (orderId, productId) 단위 멱등 → 같은 orderId로 재시도해도 안전
- *   - payment는 orderId가 멱등 키 (Phase 2에서 강화 예정)
- *
- * Phase 2에서는 이 흐름을 Kafka 이벤트 + Outbox 패턴으로 전환.
+ * Outbox: Order DB 변경과 같은 TX 안에 이벤트 행을 기록 → poller가 별도 Kafka publish.
+ * 이렇게 묶어두면 "Order는 PAID인데 Kafka에는 못 갔다"는 부정합이 발생하지 않는다.
  */
 @Service
 public class OrderService {
@@ -43,17 +43,20 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final InventoryClient inventoryClient;
     private final PaymentClient paymentClient;
+    private final OutboxService outboxService;
     private final TransactionTemplate tx;
     private final MeterRegistry meterRegistry;
 
     public OrderService(OrderRepository orderRepository,
                         InventoryClient inventoryClient,
                         PaymentClient paymentClient,
+                        OutboxService outboxService,
                         TransactionTemplate transactionTemplate,
                         MeterRegistry meterRegistry) {
         this.orderRepository = orderRepository;
         this.inventoryClient = inventoryClient;
         this.paymentClient = paymentClient;
+        this.outboxService = outboxService;
         this.tx = transactionTemplate;
         this.meterRegistry = meterRegistry;
     }
@@ -63,7 +66,11 @@ public class OrderService {
 
         Order order = tx.execute(s -> {
             List<OrderItem> items = request.items().stream().map(this::toItem).toList();
-            return orderRepository.save(Order.create(request.userId(), items));
+            Order saved = orderRepository.save(Order.create(request.userId(), items));
+            outboxService.enqueue("Order", saved.getId(), OrderEvent.TYPE_CREATED, OrderEvent.TOPIC,
+                    new OrderEvent(OrderEvent.TYPE_CREATED, saved.getId(), saved.getUserId(),
+                            saved.getStatus(), saved.getTotalAmount(), null, Instant.now()));
+            return saved;
         });
 
         List<ReservedItem> reserved = new ArrayList<>();
@@ -73,34 +80,32 @@ public class OrderService {
                     order.getId(), order.getUserId(), order.getTotalAmount()
             );
             if (payment.isSuccess()) {
-                tx.executeWithoutResult(s -> orderRepository.findById(order.getId())
-                        .ifPresent(Order::markPaid));
+                markPaid(order.getId());
                 recordOutcome(sample, "paid");
                 return reload(order.getId());
             }
-            // PG 거절 — 재고 보상 + 주문 FAILED
             log.info("Payment declined for order {}: {}", order.getId(), payment.failureReason());
             compensate(order.getId(), reserved);
-            failOrder(order.getId());
+            markFailed(order.getId(), "PAYMENT_DECLINED: " + payment.failureReason());
             recordOutcome(sample, "payment_declined");
             throw new OrchestrationException(Outcome.PAYMENT_DECLINED, reload(order.getId()),
                     "Payment declined: " + payment.failureReason());
 
         } catch (InventoryClient.OutOfStockException e) {
             compensate(order.getId(), reserved);
-            failOrder(order.getId());
+            markFailed(order.getId(), "OUT_OF_STOCK: " + e.getMessage());
             recordOutcome(sample, "out_of_stock");
             throw new OrchestrationException(Outcome.OUT_OF_STOCK, reload(order.getId()), e.getMessage());
 
         } catch (InventoryClient.InventoryInfraException e) {
             compensate(order.getId(), reserved);
-            failOrder(order.getId());
+            markFailed(order.getId(), "INVENTORY_INFRA: " + e.getMessage());
             recordOutcome(sample, "inventory_infra");
             throw new OrchestrationException(Outcome.INVENTORY_INFRA, reload(order.getId()), e.getMessage());
 
         } catch (PaymentClient.PaymentInfraException e) {
             compensate(order.getId(), reserved);
-            failOrder(order.getId());
+            markFailed(order.getId(), "PAYMENT_INFRA: " + e.getMessage());
             recordOutcome(sample, "payment_infra");
             throw new OrchestrationException(Outcome.PAYMENT_INFRA, reload(order.getId()), e.getMessage());
         }
@@ -125,9 +130,22 @@ public class OrderService {
         }
     }
 
-    private void failOrder(Long orderId) {
-        tx.executeWithoutResult(s -> orderRepository.findById(orderId)
-                .ifPresent(Order::markFailed));
+    private void markPaid(Long orderId) {
+        tx.executeWithoutResult(s -> orderRepository.findById(orderId).ifPresent(o -> {
+            o.markPaid();
+            outboxService.enqueue("Order", orderId, OrderEvent.TYPE_PAID, OrderEvent.TOPIC,
+                    new OrderEvent(OrderEvent.TYPE_PAID, orderId, o.getUserId(),
+                            o.getStatus(), o.getTotalAmount(), null, Instant.now()));
+        }));
+    }
+
+    private void markFailed(Long orderId, String reason) {
+        tx.executeWithoutResult(s -> orderRepository.findById(orderId).ifPresent(o -> {
+            o.markFailed();
+            outboxService.enqueue("Order", orderId, OrderEvent.TYPE_FAILED, OrderEvent.TOPIC,
+                    new OrderEvent(OrderEvent.TYPE_FAILED, orderId, o.getUserId(),
+                            o.getStatus(), o.getTotalAmount(), reason, Instant.now()));
+        }));
     }
 
     private Order reload(Long orderId) {
