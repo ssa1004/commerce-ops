@@ -5,6 +5,8 @@ import io.minishop.inventory.domain.InventoryReservation;
 import io.minishop.inventory.exception.OutOfStockException;
 import io.minishop.inventory.exception.ProductNotFoundException;
 import io.minishop.inventory.exception.ReservationNotFoundException;
+import io.minishop.inventory.kafka.InventoryEventPublisher;
+import io.minishop.inventory.kafka.dto.InventoryEvent;
 import io.minishop.inventory.repository.InventoryRepository;
 import io.minishop.inventory.repository.InventoryReservationRepository;
 import org.slf4j.Logger;
@@ -32,25 +34,32 @@ public class InventoryService {
     private final InventoryReservationRepository reservationRepository;
     private final DistributedLockService lockService;
     private final TransactionTemplate tx;
+    private final InventoryEventPublisher eventPublisher;
 
     public InventoryService(InventoryRepository inventoryRepository,
                             InventoryReservationRepository reservationRepository,
                             DistributedLockService lockService,
-                            TransactionTemplate transactionTemplate) {
+                            TransactionTemplate transactionTemplate,
+                            InventoryEventPublisher eventPublisher) {
         this.inventoryRepository = inventoryRepository;
         this.reservationRepository = reservationRepository;
         this.lockService = lockService;
         this.tx = transactionTemplate;
+        this.eventPublisher = eventPublisher;
     }
 
     public ReservationOutcome reserve(Long productId, Long orderId, Integer quantity) {
-        return lockService.withLock("product:" + productId,
+        ReservationOutcome outcome = lockService.withLock("product:" + productId,
                 () -> tx.execute(s -> reserveInTx(productId, orderId, quantity)));
+        eventPublisher.publish(InventoryEvent.reserved(outcome.reservation(), outcome.idempotent()));
+        return outcome;
     }
 
     public ReservationOutcome release(Long productId, Long orderId) {
-        return lockService.withLock("product:" + productId,
+        ReservationOutcome outcome = lockService.withLock("product:" + productId,
                 () -> tx.execute(s -> releaseInTx(productId, orderId)));
+        eventPublisher.publish(InventoryEvent.released(outcome.reservation(), outcome.idempotent()));
+        return outcome;
     }
 
     @Transactional(readOnly = true)
