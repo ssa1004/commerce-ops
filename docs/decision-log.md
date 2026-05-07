@@ -61,3 +61,17 @@
 - **배경**: 메트릭은 Micrometer → `/actuator/prometheus` 경로가 이미 안정 가동 중. OTel 메트릭과 이중 노출하면 같은 메트릭이 두 이름으로 보여 대시보드 혼란.
 - **대안**: 모든 신호를 OTel collector로 단일화 → 일관성↑ 이지만 Micrometer 메트릭 이름 호환 깨짐 위험
 - **결과**: traces/logs만 OTel 경로, metrics는 Prometheus scrape. Phase 2 Step 2 알람 룰 작성도 기존 메트릭 이름 그대로 사용 가능.
+
+## ADR-009 — Outbox 패턴은 order-service에만, payment/inventory는 afterCommit publish
+
+- **결정**: order-service는 Aggregate 변경과 같은 트랜잭션에서 `outbox_events` 행 기록 → 별도 폴러가 Kafka 발행. payment/inventory는 `TransactionSynchronization.afterCommit()` 훅으로 발행 (이벤트 publisher가 트랜잭션 커밋 직후 호출됨).
+- **배경**: order의 PAID/FAILED는 비즈니스 시스템(매출/배송 등) 진실의 단일 원천이라 publish 누락이 치명적. payment/inventory의 이벤트는 보조 신호(메트릭/알림용)로, 잠깐 누락돼도 도메인 일관성을 깨지 않음.
+- **대안**: 모든 서비스에 outbox → 일관성↑, 하지만 폴러·테이블·운영 부담 3배. afterCommit 훅은 "DB는 바뀌었는데 publish 못 갔다"가 가능 — 그 위험을 어디서 받아들일지의 trade-off.
+- **결과**: order는 100% 보장, payment/inventory는 best-effort. 추후 Kafka 기반 SAGA로 흐름이 바뀌면 (Step 3b) 그때 payment/inventory도 outbox로 격상 검토.
+
+## ADR-010 — Kafka는 idempotent producer + at-least-once consumer
+
+- **결정**: producer는 `enable.idempotence=true`, `acks=all`. consumer 측 (Step 3b 이후 도입) 멱등성은 inventory의 `(orderId, productId)` UNIQUE 제약 + payment의 orderId 키로 흡수.
+- **배경**: 트랜잭션 producer/consumer + transactional commit은 운영 복잡도가 큼. 같은 효과를 도메인 멱등 키로 얻을 수 있다면 그쪽이 단순.
+- **대안**: Kafka transactions (read-process-write 원자성) — 효과 강력, 하지만 KIP-447 etc. 운영 노하우 필요.
+- **결과**: 같은 메시지가 두 번 와도 도메인이 동일 결과를 내도록 설계. Phase 4 카오스 시나리오에서 의도적 중복 메시지로 멱등성 검증 가능.
