@@ -101,15 +101,43 @@
 
 ---
 
-## Phase 3 — 자체 모듈 적용 (3~4주)
+## Phase 3 — 자체 운영 라이브러리 (`modules/`)
 
 > "내가 만든 라이브러리가 운영을 더 편하게 한다"
 
-- [ ] `modules/slow-query-detector` 구현 + publish (Maven local)
-- [ ] 서비스에 적용 → 의도적으로 N+1 발생시켜 감지 데모
-- [ ] `modules/correlation-mdc-starter` 구현 + 적용
-- [ ] `modules/actuator-extras` 구현 + 커스텀 엔드포인트 노출
-- [ ] 각 모듈 README에 사용법 + 설계 의도 정리
+### Step 1 — slow-query-detector v0.1 ✅
+- [x] Spring Boot starter 골격 (auto-config + properties)
+- [x] DataSource를 datasource-proxy로 감싸는 BeanPostProcessor (ADR-012)
+- [x] 슬로우 쿼리 감지 — `slow_query_total` 카운터 + WARN 로그
+- [x] N+1 감지 (정규화 SQL + ThreadLocal + TX afterCompletion 정리) — `n_plus_one_total` 카운터
+- [x] `query_execution_seconds{outcome=ok|slow}` 타이머 (분포 측정)
+- [x] 13개 단위 테스트 (정규화 / 리스너 동작 / Spring wiring)
+- [x] mavenLocal publish (`io.minishop:slow-query-detector:0.1.0-SNAPSHOT`)
+- [x] [README](modules/slow-query-detector/README.md) + [DESIGN.md](modules/slow-query-detector/DESIGN.md)
+
+### Step 2 — slow-query-detector를 서비스에 적용 + N+1 데모 ✅
+- [x] order-service settings.gradle.kts에 `includeBuild("../../modules/slow-query-detector")` — composite build로 mavenLocal 없이 로컬·CI 동일하게 빌드
+- [x] order-service build.gradle.kts에 `implementation("io.minishop:slow-query-detector")`
+- [x] `GET /orders` (paging) — naive listing으로 의도적 N+1 발생 (응답 직렬화에서 items lazy load)
+- [x] 통합 테스트: 주문 5건 생성 + listing → `n_plus_one_total` 카운터 증가 검증
+- [x] Grafana "Slow Query & N+1" 대시보드 자동 프로비저닝 (5개 패널)
+- [x] 알람 룰: `n_plus_one_detected` (P2) + [런북](docs/runbook/n-plus-one-detected.md)
+
+### Step 3 — correlation-mdc-starter
+- [ ] OTel trace_id가 이미 MDC에 들어가는 부분은 그대로 활용
+- [ ] 추가: HTTP 헤더(X-User-Id, X-Request-Id 등)에서 비즈니스 식별자를 MDC로 주입
+- [ ] Kafka consumer에서도 동일하게 (current trace context 외 추가 attribute)
+- [ ] 비동기 Executor 데코레이터 (Reactor / `@Async`)
+
+### Step 4 — actuator-extras
+- [ ] `/actuator/hikari` (active/idle/pending + 최근 슬로우 acquire)
+- [ ] `/actuator/threadpools` (모든 `ThreadPoolTaskExecutor` 상태)
+- [ ] `/actuator/transactions` (진행 중 트랜잭션 추적)
+
+### Step 5 — chaos-injector
+- [ ] AOP 기반 메서드 단위 지연/실패 주입
+- [ ] HTTP endpoint로 동적 조절
+- [ ] `production` 프로파일에서 강제 disable 안전 가드
 
 ---
 
