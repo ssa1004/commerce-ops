@@ -1,0 +1,9 @@
+# 테스트 전용 오버라이드 (gradle test 태스크에서 SPRING_PROFILES_ACTIVE=test 주입)
+mini-shop:
+  outbox:
+    poller:
+      enabled: false
+spring:
+  kafka:
+    listener:
+      auto-startup: false
