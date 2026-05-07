@@ -9,6 +9,13 @@ spring:
       acks: all
       properties:
         enable.idempotence: true
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+    listener:
+      ack-mode: record
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/orderdb
     username: ${DB_USER:mini}
@@ -87,5 +94,10 @@ mini-shop:
       interval-ms: ${OUTBOX_POLLER_INTERVAL_MS:1000}
       batch-size: ${OUTBOX_POLLER_BATCH_SIZE:100}
       max-attempts: ${OUTBOX_POLLER_MAX_ATTEMPTS:5}
+  reconciliation:
+    enabled: ${RECONCILIATION_ENABLED:true}
+    interval-ms: ${RECONCILIATION_INTERVAL_MS:60000}
+    lookback-minutes: ${RECONCILIATION_LOOKBACK_MIN:30}
+    batch-size: ${RECONCILIATION_BATCH_SIZE:200}
 
 # 로그 패턴/appender는 src/main/resources/logback-spring.xml에서 정의.
