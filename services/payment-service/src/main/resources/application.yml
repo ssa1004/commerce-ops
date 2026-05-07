@@ -39,6 +39,28 @@ management:
       export:
         enabled: true
 
+otel:
+  service:
+    name: ${spring.application.name}
+  exporter:
+    otlp:
+      endpoint: http://${OTEL_HOST:localhost}:4318
+      protocol: http/protobuf
+  metrics:
+    exporter: none
+  logs:
+    exporter: otlp
+  traces:
+    exporter: otlp
+  resource:
+    attributes:
+      deployment.environment: ${DEPLOY_ENV:dev}
+  instrumentation:
+    micrometer:
+      enabled: false
+    logback-appender:
+      experimental-log-attributes: true
+
 mini-shop:
   pg:
     # Phase 1에서는 자기 자신의 mock-pg endpoint를 호출.
@@ -54,6 +76,4 @@ mini-shop:
     timeout-rate: ${MOCK_PG_TIMEOUT_RATE:0.005}
     timeout-ms: ${MOCK_PG_TIMEOUT_MS:30000}
 
-logging:
-  pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+# 로그 패턴/appender는 src/main/resources/logback-spring.xml에서 정의.
