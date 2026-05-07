@@ -7,15 +7,15 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Per-thread N+1 추적 윈도우.
+ * 스레드별 N+1 추적 윈도우 (이 스레드가 처리 중인 작업 동안의 SQL 카운트 모음).
  *
- * 동일 normalized SQL이 같은 윈도우에서 반복되면 카운트가 올라간다.
+ * 동일 정규화 SQL (리터럴을 `?` 로 치환해 모양만 비교) 이 같은 윈도우 안에서 반복되면 카운트가 올라간다.
  * 윈도우 경계:
- *  - Spring 트랜잭션이 활성화되어 있으면 → 그 트랜잭션 종료 시 자동 정리 (afterCompletion)
- *  - 트랜잭션이 없으면 → 호출자가 명시적으로 reset() 하지 않는 한 ThreadLocal에 누적
- *    (서블릿 환경에서 worker thread 재사용으로 leak 가능 — DESIGN.md에 한계 명시)
+ *  - Spring 트랜잭션이 활성화되어 있으면 → 그 트랜잭션 종료 시 자동 정리 (afterCompletion 콜백 사용)
+ *  - 트랜잭션이 없으면 → 호출자가 명시적으로 reset() 하지 않는 한 ThreadLocal 에 그대로 누적
+ *    (서블릿 환경에서 worker thread 재사용으로 다음 요청까지 새는 leak 가능 — DESIGN.md 에 한계 명시)
  *
- * 이 한계를 지금 수용하는 이유: N+1은 거의 항상 트랜잭션 안에서 발생 (JPA lazy loading 등).
+ * 이 한계를 지금 수용하는 이유: N+1 은 거의 항상 트랜잭션 안에서 발생 (JPA lazy loading 등).
  * 트랜잭션 밖 쿼리에는 N+1 휴리스틱이 부정확해도 큰 손해가 없다.
  */
 final class NPlusOneContext {

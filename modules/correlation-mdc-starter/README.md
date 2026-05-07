@@ -1,19 +1,19 @@
 # correlation-mdc-starter
 
-OpenTelemetry **Trace ID**를 SLF4J **MDC**에 자동 주입. 로그·트레이스·메트릭 상관관계가 단일 ID로 연결되도록.
+OpenTelemetry **Trace ID** (요청 하나의 식별자) 를 SLF4J **MDC** (Mapped Diagnostic Context — 이 스레드의 키밸류 저장소, 로그 패턴에서 `%X{key}` 로 출력 가능) 에 자동 주입. 로그·트레이스·메트릭 상관관계가 단일 ID 로 연결되도록.
 
 ## 왜 만드나
 
-- OTel auto-instrumentation이 trace ID는 만들어주지만, 로그 패턴에 자동으로 들어가진 않음
-- 매 서비스에서 `MDCInsertingServletFilter` 같은 보일러플레이트 반복
+- OTel auto-instrumentation 이 trace ID 는 만들어주지만, 로그 패턴에 자동으로 들어가진 않음
+- 매 서비스에서 `MDCInsertingServletFilter` 같은 boilerplate (반복적인 정형 코드) 가 반복
 - → 의존성만 추가하면 끝나도록
 
 ## 동작 방식 (계획)
 
-- `OpenTelemetry` SDK의 현재 Span에서 Trace ID/Span ID를 읽어 MDC에 주입
-- 동기 흐름: ServletFilter / WebFilter (WebFlux 분기)
-- 비동기 흐름: `Executor` 데코레이터 + Reactor `ContextRegistry`
-- Kafka consumer: `RecordInterceptor`로 헤더의 traceparent → MDC
+- `OpenTelemetry` SDK 의 현재 Span 에서 Trace ID/Span ID 를 읽어 MDC 에 주입
+- 동기 흐름: ServletFilter (Spring MVC) / WebFilter (WebFlux — 리액티브 스택) 분기
+- 비동기 흐름: `Executor` 데코레이터 (다른 스레드로 작업이 넘어갈 때 MDC 가 따라가게) + Reactor `ContextRegistry` (리액티브 컨텍스트 전파 도구)
+- Kafka consumer: `RecordInterceptor` 로 헤더의 traceparent (W3C 표준 trace 컨텍스트 헤더) → MDC
 
 ## Configuration (예시)
 
@@ -33,7 +33,7 @@ mini-shop:
 %d{ISO8601} [%X{traceId:-}] [%X{userId:-}] %-5level %logger{36} - %msg%n
 ```
 
-→ Loki/Grafana에서 traceId로 검색 → Tempo trace로 한 번에 점프 가능.
+→ Loki/Grafana 에서 traceId 로 검색 → Tempo trace 로 한 번에 점프 가능.
 
 ## TODO
 

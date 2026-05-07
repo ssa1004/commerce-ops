@@ -17,10 +17,12 @@ import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * 외부 결제 게이트웨이를 흉내내는 컨트롤러. 평소엔 평균 latencyMeanMs 정도 걸리고,
- * 일정 확률로 5xx를 던지거나 timeoutMs 만큼 멈춰서 timeout을 유도한다.
+ * 외부 결제 게이트웨이 (PG — Payment Gateway, 결제사) 를 흉내내는 컨트롤러.
+ * 평소엔 평균 latencyMeanMs 정도 걸리고, 일정 확률로 5xx 를 던지거나 timeoutMs 만큼
+ * 멈춰서 호출자의 read timeout 을 유도한다.
  *
- * 운영 환경에선 enabled=false. 평소 트래픽 데모와 카오스 시나리오의 신호원 역할.
+ * 운영 환경에선 enabled=false. 평소 트래픽 데모와 chaos 시나리오 (일부러 장애를 주입해 시스템
+ * 반응을 보는 실험) 의 신호원 역할.
  */
 @RestController
 @RequestMapping("/mock-pg")

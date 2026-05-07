@@ -47,8 +47,9 @@ public class PaymentService {
             payment.markFailed(e.getMessage());
         }
 
-        // 트랜잭션 commit 직후에만 publish — DB에 없는 이벤트가 발행되는 것을 방지.
-        // (Phase 3 outbox로 강화 시점까지의 단순한 절충안.)
+        // 트랜잭션 커밋 직후에만 publish — DB 에 안 남은 결제가 이벤트로만 새어나가는 것을 방지.
+        // 단, 커밋 후 publish 직전에 프로세스가 죽으면 "DB 는 SUCCESS 인데 이벤트는 못 갔다" 가 가능.
+        // 이 위험을 줄이려면 Outbox 패턴으로 격상해야 하는데 (ADR-009 참고), Phase 3 까지의 절충안이다.
         Payment finalPayment = payment;
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override

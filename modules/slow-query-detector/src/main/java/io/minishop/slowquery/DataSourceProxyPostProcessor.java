@@ -9,8 +9,8 @@ import org.springframework.beans.factory.config.BeanPostProcessor;
 import javax.sql.DataSource;
 
 /**
- * 컨텍스트의 모든 DataSource bean을 ProxyDataSource로 감싼다.
- * 사용자 코드는 변경할 필요 없이, 의존성만 추가하면 자동 적용.
+ * Spring 컨텍스트의 모든 DataSource bean 을 ProxyDataSource (호출을 가로채 측정 훅을 끼워주는
+ * 래퍼) 로 감싼다. 사용자 코드는 변경할 필요 없이, 의존성만 추가하면 자동 적용.
  */
 class DataSourceProxyPostProcessor implements BeanPostProcessor {
 
