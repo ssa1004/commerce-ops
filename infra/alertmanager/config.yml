@@ -1,15 +1,41 @@
 global:
   resolve_timeout: 5m
 
+# severity별 라우팅. P1은 다른 채널로 빠지도록 분리해두면 운영 노이즈 분리에 좋다.
 route:
   receiver: default
-  group_by: [alertname]
+  group_by: [alertname, service]
   group_wait: 10s
   group_interval: 1m
   repeat_interval: 1h
+  routes:
+    - matchers:
+        - severity = P1
+      receiver: critical
+      group_wait: 0s
+      repeat_interval: 30m
+    - matchers:
+        - severity = P2
+      receiver: default
 
+# 운영 환경 연결은 직접 채워 사용. webhook 자리표 두 개 — placeholder.
+# - critical:  PagerDuty / Opsgenie / SMS 등
+# - default:   Slack #alerts-noisy 같은 일반 채널
 receivers:
   - name: default
-    # Phase 2: Slack/Email/Webhook 추가
-    # webhook_configs:
-    #   - url: http://localhost:9999/hook
+    webhook_configs:
+      - url: http://localhost:9999/webhook-default
+        send_resolved: true
+
+  - name: critical
+    webhook_configs:
+      - url: http://localhost:9999/webhook-critical
+        send_resolved: true
+
+# 동일 알람의 P1 발생 중에는 P2 묶어내기 — over-paging 방지.
+inhibit_rules:
+  - source_matchers:
+      - severity = P1
+    target_matchers:
+      - severity = P2
+    equal: [alertname, service]
