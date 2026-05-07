@@ -72,11 +72,21 @@
 - [x] `docs/runbook/` 5개 (When/Impact/Diagnosis/Mitigation/Post-mortem 포맷)
 - [x] alert 룰의 `runbook_url`이 GitHub URL을 가리켜 alertmanager 메시지에서 바로 점프
 
-### Step 3 — Kafka 비동기 전환
-- [ ] OrderCreated / PaymentResult / InventoryReserved 이벤트
-- [ ] order-service Outbox 패턴 (가벼운 버전)
-- [ ] payment / inventory consumer로 흐름 전환
-- [ ] OTel auto-instrumentation으로 Kafka span 자동 전파 확인
+### Step 3a — Kafka 도입 + Outbox + lifecycle 이벤트 발행 ✅
+- [x] spring-kafka 의존성 + producer/consumer 자동 구성
+- [x] order-service: Outbox 패턴 (트랜잭션 outbox 테이블 + SKIP LOCKED 폴러)
+- [x] order-service: OrderCreated / OrderPaid / OrderFailed 이벤트 (Order TX와 함께 outbox에 기록)
+- [x] payment-service: PaymentSucceeded / PaymentFailed 이벤트 (afterCommit publish)
+- [x] inventory-service: InventoryReserved / InventoryReleased 이벤트 (lock+TX 끝나고 publish)
+- [x] OTel Kafka auto-instrumentation으로 producer span 자동 생성
+- [x] producer idempotence + acks=all, consumer 멱등성은 도메인 키로 (ADR-010)
+
+### Step 3b — Kafka choreography로 흐름 자체 비동기화
+- [ ] POST /orders → 202 Accepted + outbox에 OrderCreated만 기록 (sync REST orchestration 제거)
+- [ ] inventory-service: OrderCreated 소비 → reserve → InventoryReservationSucceeded/Failed
+- [ ] payment-service: InventoryReservationSucceeded 소비 → charge → PaymentResult
+- [ ] order-service consumer: 이벤트로 Order 상태 전이 + 보상 (PaymentFailed → InventoryRelease 명령)
+- [ ] payment/inventory도 outbox로 격상 (ADR-009 후속)
 
 ### Step 4 — 첫 트레이스 분석 케이스 스터디
 - [ ] 카오스 1개 (예: `MOCK_PG_LATENCY_MEAN_MS=1500`)
