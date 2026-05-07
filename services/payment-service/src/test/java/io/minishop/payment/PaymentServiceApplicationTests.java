@@ -1,6 +1,7 @@
 package io.minishop.payment;
 
 import io.minishop.payment.domain.PaymentStatus;
+import io.minishop.payment.kafka.PaymentEventPublisher;
 import io.minishop.payment.service.PgClient;
 import io.minishop.payment.web.dto.CreatePaymentRequest;
 import io.minishop.payment.web.dto.PaymentResponse;
@@ -34,6 +35,11 @@ class PaymentServiceApplicationTests {
 
 	@MockitoBean
 	PgClient pgClient;
+
+	// 테스트에서 실제 Kafka 브로커가 없으므로 publisher를 mock으로 대체.
+	// publisher가 호출되는지 자체는 별도 테스트(여기서는 검증 안 함).
+	@MockitoBean
+	PaymentEventPublisher eventPublisher;
 
 	@Autowired
 	TestRestTemplate http;
