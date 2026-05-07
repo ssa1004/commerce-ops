@@ -8,15 +8,19 @@
 
 | Service | 책임 | 주요 의존성 |
 |---|---|---|
-| `order-service` | 주문 생성/조회, 결제·재고 오케스트레이션 | PostgreSQL, Kafka producer |
-| `payment-service` | 결제 처리 (외부 PG 호출 시뮬레이션), 결제 결과 이벤트 발행 | PostgreSQL, Kafka, 외부 API mock |
-| `inventory-service` | 재고 차감/복구, 재고 캐싱 | PostgreSQL, Redis, Kafka consumer |
+| `order-service` | 주문 생성/조회, 결제·재고 오케스트레이션, Outbox로 lifecycle 이벤트 발행 | PostgreSQL, Kafka producer (via outbox poller) |
+| `payment-service` | 결제 처리 (외부 PG mock 호출), 결제 결과 이벤트 발행 (afterCommit) | PostgreSQL, Kafka producer |
+| `inventory-service` | 재고 차감/복구, Redisson 분산락, 재고 이벤트 발행 | PostgreSQL, Redis, Kafka producer |
 
 ### Data Stores
 
 - **PostgreSQL** — 서비스별 독립 스키마 (per-service DB pattern)
 - **Redis** — `inventory-service` 캐시 + 분산락 (재고 동시성 데모)
-- **Kafka** — 서비스 간 비동기 이벤트 (`OrderCreated`, `PaymentSucceeded`, `InventoryReserved`)
+- **Kafka** — 서비스 간 비동기 이벤트
+  - 토픽: `order.events`, `payment.events`, `inventory.events`
+  - 이벤트: `OrderCreated/Paid/Failed`, `PaymentSucceeded/Failed`, `InventoryReserved/Released`
+  - producer: idempotent + acks=all (ADR-010)
+  - 발행 보장: order-service는 Outbox 패턴, payment/inventory는 afterCommit publish (ADR-009)
 
 ### Observability Stack
 
