@@ -29,8 +29,9 @@ scrape_configs:
         labels:
           application: payment-service
 
-  # Phase 1 Step 3에서 활성화:
-  # - job_name: inventory-service
-  #   metrics_path: /actuator/prometheus
-  #   static_configs:
-  #     - targets: ["host.docker.internal:8083"]
+  - job_name: inventory-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:8083"]
+        labels:
+          application: inventory-service
