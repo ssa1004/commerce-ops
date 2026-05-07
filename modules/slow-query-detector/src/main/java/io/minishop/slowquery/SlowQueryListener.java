@@ -94,7 +94,7 @@ public class SlowQueryListener implements QueryExecutionListener {
 
     /**
      * datasource-proxy / Spring / Hibernate / Hikari 프레임워크 프레임을 거른 사용자 코드 스택만
-     * N (기본 8) 줄 잘라낸다. 그래야 "어떤 컨트롤러/서비스/리포지토리가 N+1 을 만들었나" 가 즉답된다.
+     * N (기본 8) 줄 잘라낸다. "어떤 컨트롤러/서비스/리포지토리가 N+1 을 만들었나" 를 바로 식별하기 위함.
      */
     private String callerStack() {
         StackTraceElement[] full = Thread.currentThread().getStackTrace();

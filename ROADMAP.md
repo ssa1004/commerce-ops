@@ -38,7 +38,7 @@
 
 ### Step 3 — inventory-service vertical ✅
 - [x] 동일 패턴 (init / Flyway / Micrometer / Testcontainers)
-- [x] Redisson 분산락 + JPA `@Version` (낙관적 락) 이중 안전망 — 락이 풀려도 DB 레벨에서 한 번 더 막힘
+- [x] Redisson 분산락 + JPA `@Version` (낙관적 락) 2개 레이어 — 락이 풀려도 DB 레벨에서 한 번 더 막힘
 - [x] (orderId, productId) 멱등 reserve/release — 같은 키로 두 번 와도 한 번 처리한 결과와 동일
 - [x] `inventory_lock_acquire_seconds{outcome}` 메트릭 (락 획득 시간 + acquired/timeout/interrupted 분포)
 - [x] Prometheus scrape 활성화 (8083)
@@ -103,7 +103,7 @@
 
 ## Phase 3 — 자체 운영 라이브러리 (`modules/`)
 
-> "내가 만든 라이브러리가 운영을 더 편하게 한다"
+> 운영에서 반복되는 보일러플레이트를 Spring Boot starter 로 떼어내는 단계
 
 ### Step 1 — slow-query-detector v0.1 ✅
 - [x] Spring Boot starter 골격 (auto-config — 의존성만 추가하면 자동 활성화 + properties)
