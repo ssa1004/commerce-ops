@@ -1,5 +1,6 @@
 package io.minishop.order;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import io.minishop.order.domain.OrderStatus;
 import io.minishop.order.service.InventoryClient;
 import io.minishop.order.service.PaymentClient;
@@ -12,6 +13,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -48,6 +51,9 @@ class OrderServiceApplicationTests {
 
 	@Autowired
 	TestRestTemplate http;
+
+	@Autowired
+	MeterRegistry meterRegistry;
 
 	@BeforeEach
 	void setUp() {
@@ -124,6 +130,30 @@ class OrderServiceApplicationTests {
 		assertThat(response.getBody().status()).isEqualTo(OrderStatus.FAILED);
 
 		verify(inventoryClient, atLeastOnce()).release(anyLong(), anyLong());
+	}
+
+	@Test
+	void naiveListEndpoint_triggersNPlusOneDetector() {
+		// 5개 주문 생성 (각 1 item) — 모두 같은 SQL 패턴(SELECT items WHERE order_id = ?)이 반복될 조건
+		double before = meterRegistry.counter("n_plus_one_total").count();
+		for (int i = 0; i < 5; i++) {
+			http.postForEntity("/orders",
+					new CreateOrderRequest((long) i,
+							List.of(new CreateOrderItemRequest(1001L, 1, new BigDecimal("9990.00")))),
+					OrderResponse.class);
+		}
+
+		// 의도적 N+1 경로: GET /orders → naive findAll → items lazy load
+		ResponseEntity<List<OrderResponse>> resp = http.exchange(
+				"/orders?size=10", HttpMethod.GET, null,
+				new ParameterizedTypeReference<>() {}
+		);
+		assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
+		assertThat(resp.getBody()).hasSizeGreaterThanOrEqualTo(5);
+
+		double after = meterRegistry.counter("n_plus_one_total").count();
+		// 같은 정규화 SQL이 5번 이상 반복 → 임계(기본 5)에 도달하면 카운터가 한 번 증가
+		assertThat(after).isGreaterThan(before);
 	}
 
 	@Test

@@ -83,3 +83,10 @@
 - **대안 1 — 자동 보정**: 위험하다. 부정합이 진짜인지 일시적 race인지 즉답 어렵다. 사람 개입을 위한 신호로 두는 편이 안전.
 - **대안 2 — 받자마자 Order에 반영 (Step 3c가 갈 방향)**: 더 깊은 변화. 우선 모니터링 신호부터 두고 본격 async 전환은 후속.
 - **결과**: `reconciliation.inconsistency{kind=order_failed_payment_succeeded}` 카운터 노출. 이 값 > 0일 때 알람을 P1으로 받기만 하면 즉각 알게 된다. inbox 자체는 도메인 진실이 아니라 *외부 신호의 거울*이라는 점을 코드 주석에서도 명시.
+
+## ADR-012 — slow-query-detector는 DataSource 단에서 가로챈다
+
+- **결정**: `modules/slow-query-detector`는 `DataSource` bean을 datasource-proxy로 감싸는 BeanPostProcessor 형태로 구현. JPA/JDBC/MyBatis 어느 경로든 같은 자리에서 측정.
+- **배경**: 슬로우 쿼리/N+1을 잡는 위치는 (a) Hibernate Statistics, (b) Repository AOP, (c) DataSource 프록시 셋 중 하나. Hibernate 한정은 너무 좁고, AOP는 한 메서드 안의 여러 SQL을 한 덩어리로만 봄. DataSource는 가장 낮은 층이라 모든 호출 경로를 균일하게 본다.
+- **대안**: p6spy — 둘 다 DataSource 단인데 p6spy는 `spy.properties` + JDBC URL 변경이 필요. datasource-proxy는 Spring과 자연스럽게 결합되고 JDBC URL을 안 건드림.
+- **결과**: 사용자는 의존성만 추가하면 끝. DataSource bean 종류(Hikari/Tomcat/etc.) 무관. v0.1은 슬로우 + N+1만, v0.2 후보로 OTel span event attach가 있음 (자세한 설계는 [modules/slow-query-detector/DESIGN.md](../modules/slow-query-detector/DESIGN.md)).
