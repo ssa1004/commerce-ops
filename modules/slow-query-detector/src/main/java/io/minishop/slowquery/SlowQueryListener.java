@@ -13,10 +13,11 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
- * datasource-proxy의 모든 쿼리 실행 직후 호출된다.
- *  - 임계치 초과 → slow_query_total 카운터 증가 + WARN 로그 (옵션: stack trace 일부)
- *  - 동일 정규화 SQL 반복 → n_plus_one_total 카운터 증가 (임계 도달 순간 한 번)
- *  - 모든 쿼리는 query_execution_seconds 타이머로 분포 측정
+ * datasource-proxy 가 모든 쿼리 실행 직후 이 리스너를 호출한다.
+ *  - 임계치 초과 → slow_query_total 카운터 증가 + WARN 로그 (옵션: 호출 스택 일부)
+ *  - 동일 정규화 SQL (리터럴을 `?` 로 치환해 모양만 비교) 반복 → n_plus_one_total 카운터 증가
+ *    (임계 도달 순간 한 번만 — 같은 N+1 이 1000번 실행돼도 카운트는 1)
+ *  - 모든 쿼리는 query_execution_seconds 타이머로 분포 (p50/p95/p99 등) 측정
  */
 public class SlowQueryListener implements QueryExecutionListener {
 
@@ -37,7 +38,7 @@ public class SlowQueryListener implements QueryExecutionListener {
 
     @Override
     public void beforeQuery(ExecutionInfo execInfo, List<QueryInfo> queryInfoList) {
-        // datasource-proxy가 elapsed time을 자동 계산하니 별도 시작 시각 기록 불필요.
+        // datasource-proxy 가 실행 시간 (elapsed time) 을 자동 계산해 주므로 별도 시작 시각 기록 불필요.
     }
 
     @Override
@@ -58,7 +59,9 @@ public class SlowQueryListener implements QueryExecutionListener {
 
             int count = NPlusOneContext.observe(normalized);
             if (count == props.nPlusOneThreshold()) {
-                // 임계 도달 *시점에만* 한 번 카운트. 이후 같은 패턴 반복은 이미 N+1로 알고 있음.
+                // 임계 도달 *시점에만* 한 번 카운트 (`==` 임에 주의).
+                // 이후 같은 패턴 반복은 이미 N+1 로 알고 있어 카운트하지 않음 → 메트릭은
+                // *고유 N+1 사례 발생 빈도* 가 됨.
                 nPlusOneCounter.increment();
                 logNPlusOne(normalized, count);
             }
@@ -90,7 +93,8 @@ public class SlowQueryListener implements QueryExecutionListener {
     }
 
     /**
-     * datasource-proxy / spring / hibernate 프레임워크 프레임을 거른 사용자 스택 일부만 잘라낸다.
+     * datasource-proxy / Spring / Hibernate / Hikari 프레임워크 프레임을 거른 사용자 코드 스택만
+     * N (기본 8) 줄 잘라낸다. 그래야 "어떤 컨트롤러/서비스/리포지토리가 N+1 을 만들었나" 가 즉답된다.
      */
     private String callerStack() {
         StackTraceElement[] full = Thread.currentThread().getStackTrace();

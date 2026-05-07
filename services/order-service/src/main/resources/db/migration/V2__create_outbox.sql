@@ -1,6 +1,7 @@
 -- Transactional outbox.
--- Events are written in the same TX as the aggregate change so the publish
--- step (Kafka send) is decoupled from request handling and can be safely retried.
+-- Events are written in the same DB transaction as the domain change. The publish step
+-- (Kafka send) runs separately so it can be retried safely without blocking the request,
+-- and so a publish failure never leaves the DB and Kafka in disagreement.
 
 CREATE TABLE outbox_events (
     id             BIGSERIAL PRIMARY KEY,
@@ -16,7 +17,7 @@ CREATE TABLE outbox_events (
     sent_at        TIMESTAMP WITH TIME ZONE
 );
 
--- 폴러가 PENDING만 빠르게 스캔하도록 partial index.
+-- 폴러가 미발행 이벤트만 빠르게 가져오도록 partial index (조건이 붙은 인덱스 — PENDING 행만 색인).
 CREATE INDEX idx_outbox_pending ON outbox_events (created_at)
     WHERE status = 'PENDING';
 

@@ -54,6 +54,8 @@ public class DistributedLockService {
             if (lock.isHeldByCurrentThread()) {
                 lock.unlock();
             } else {
+                // 작업이 lease (락 보유 시간) 보다 오래 걸려 락이 자동 만료된 상태.
+                // 다른 요청이 끼어들었을 가능성이 있으므로 경고 로그.
                 log.warn("Lock {} was no longer held when releasing — likely lease expired", fullKey);
             }
         }

@@ -1,14 +1,14 @@
 # Load Testing — k6
 
-[k6](https://k6.io/) 부하 시나리오 모음. 메트릭은 자동으로 Prometheus로도 보낼 수 있음.
+[k6](https://k6.io/) (JavaScript 로 시나리오를 작성하는 부하 테스트 도구) 부하 시나리오 모음. 메트릭은 자동으로 Prometheus 로도 보낼 수 있음.
 
 ## 시나리오
 
 | 파일 | 목적 | 패턴 |
 |---|---|---|
-| `baseline.js` | 현재는 `/actuator/health` smoke, Phase 2에서 주문 happy path로 전환 | 50 VUs, 5분 |
-| `peak.js` | 현재는 `/actuator/health` peak smoke, Phase 2에서 이벤트성 주문 부하로 전환 | 5분 ramp-up → 200 VUs 10분 → ramp-down |
-| `soak.js` | 현재는 `/actuator/health` soak smoke, Phase 2에서 장시간 주문 부하로 전환 | 30 VUs, 2시간 |
+| `baseline.js` | 현재는 `/actuator/health` smoke (간단 기동 확인), Phase 2 에서 주문 정상 흐름으로 전환 | 50 VUs (가상 사용자), 5분 |
+| `peak.js` | 현재는 `/actuator/health` peak smoke, Phase 2 에서 이벤트성 주문 부하로 전환 | 5분 ramp-up (점진 증가) → 200 VUs 10분 → ramp-down (점진 감소) |
+| `soak.js` | 현재는 `/actuator/health` soak smoke (장시간 안정성 확인), Phase 2 에서 장시간 주문 부하로 전환 | 30 VUs, 2시간 |
 
 ## 실행
 

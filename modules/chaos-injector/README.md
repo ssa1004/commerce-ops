@@ -36,8 +36,8 @@ mini-shop:
 
 ## TODO
 
-- [ ] AOP 기반 인터셉터
-- [ ] HTTP endpoint로 동적 조절
-- [ ] 분포 옵션 (uniform, normal, exponential)
-- [ ] Reactor 호환
-- [ ] 안전 가드 (`production` profile에서 강제 disable)
+- [ ] AOP (메서드 호출 앞뒤에 별도 로직을 끼우는 기법) 기반 인터셉터
+- [ ] HTTP endpoint 로 동적 조절 (재시작 없이 강도 변경)
+- [ ] 분포 옵션 (uniform — 균등, normal — 정규, exponential — 지수)
+- [ ] Reactor (리액티브 라이브러리) 호환
+- [ ] 안전 가드 (`production` profile 에서 강제 비활성화)

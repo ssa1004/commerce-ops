@@ -18,12 +18,13 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.util.Optional;
 
 /**
- * 락 → 트랜잭션 순서로 진입한다. (트랜잭션 → 락 순서로 두면 락 대기 동안 DB 커넥션을 잡고 있게 되어 풀 고갈 위험.)
+ * 락 → 트랜잭션 순서로 진입한다. (반대로 트랜잭션 → 락 순서면 락을 기다리는 동안 DB 커넥션을
+ * 그대로 쥐고 있어 커넥션 풀이 빨리 마름.)
  *
- * 멱등성:
- * - reserve: (orderId, productId)가 이미 RESERVED 또는 RELEASED면 그 reservation을 그대로 반환한다.
+ * 멱등성 (같은 요청이 두 번 와도 한 번 처리한 결과와 같음):
+ * - reserve: (orderId, productId) 가 이미 RESERVED 또는 RELEASED 면 그 reservation 을 그대로 반환.
  *   같은 키로 두 번 호출돼도 재고가 두 번 차감되지 않는다.
- * - release: 동일 키가 RELEASED면 no-op. 한 번 더 와도 재고가 두 번 복구되지 않는다.
+ * - release: 같은 키가 이미 RELEASED 면 아무것도 안 함. 한 번 더 와도 재고가 두 번 복구되지 않는다.
  */
 @Service
 public class InventoryService {

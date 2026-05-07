@@ -4,23 +4,23 @@
 
 | Module | 한 줄 설명 |
 |---|---|
-| [slow-query-detector](slow-query-detector/) | JPA/JDBC 슬로우·N+1 쿼리를 자동 감지해 메트릭/로그/Trace event로 노출 |
-| [correlation-mdc-starter](correlation-mdc-starter/) | OTel Trace ID ↔ MDC 자동 동기화. 로그·트레이스·메트릭 상관관계 |
-| [actuator-extras](actuator-extras/) | HikariCP, 스레드풀, 트랜잭션 통계 커스텀 endpoint |
-| [chaos-injector](chaos-injector/) | 메서드 단위 지연/실패 주입 (테스트·데모용) |
+| [slow-query-detector](slow-query-detector/) | JPA/JDBC 슬로우·N+1 (한 번 작업에서 같은 모양의 쿼리가 N 번 반복되는 안티패턴) 쿼리를 자동 감지해 메트릭/로그/Trace event 로 노출 |
+| [correlation-mdc-starter](correlation-mdc-starter/) | OTel Trace ID ↔ MDC (SLF4J/Logback 의 thread-local 키밸류 — 로그 패턴에 출력 가능) 자동 동기화. 로그·트레이스·메트릭 상관관계 |
+| [actuator-extras](actuator-extras/) | HikariCP (DB 커넥션 풀), 스레드풀, 트랜잭션 통계 커스텀 endpoint |
+| [chaos-injector](chaos-injector/) | 메서드 단위로 지연/실패를 일부러 주입 (테스트·데모용) |
 
 ## 설계 원칙
 
-1. **AutoConfiguration 우선** — `META-INF/spring/...AutoConfiguration.imports`로 자동 활성화
-2. **Opinionated Defaults** — 즉시 가치 제공, 필요시 properties로 끄기
-3. **Zero-touch on Trace ID** — 사용자가 trace 전파를 신경 쓰지 않게
-4. **Public API 최소화** — 깨질 표면적을 좁게
+1. **AutoConfiguration 우선** — `META-INF/spring/...AutoConfiguration.imports` 로 의존성만 추가하면 자동 활성화
+2. **합리적 기본값 (Opinionated Defaults)** — 즉시 가치 제공, 필요시 properties 로 끄기
+3. **Trace ID 자동 처리 (Zero-touch on Trace ID)** — 사용자가 trace 전파 (서비스 간에 trace 컨텍스트가 따라가도록 헤더에 싣는 일) 를 신경 쓰지 않게
+4. **공개 API 최소화** — 호환성을 깰 표면적을 좁게
 
 ## 배포
 
-- Phase 3 1차 목표: `mavenLocal()` publish
+- Phase 3 1차 목표: `mavenLocal()` publish (로컬 머신의 ~/.m2 에 게시)
 - Phase 4 이후: GitHub Packages 또는 Maven Central
-- 각 모듈 SemVer (0.x 동안 free-form)
+- 각 모듈 SemVer (semantic versioning — major.minor.patch). 0.x 동안은 자유 형식
 
 ## 모듈 구조 템플릿
 
