@@ -28,13 +28,17 @@
 사후 분석 가이드. case-studies/에 정식 회고로 옮길지 판단.
 ```
 
-## 목록 (Phase 2 Step 2 — 5개)
+## 목록
 
+Phase 2 Step 2 — 5개:
 - [order-p99-latency-high](order-p99-latency-high.md) — order-service p99 > 500ms
 - [order-error-rate-spike](order-error-rate-spike.md) — order-service 5xx 비율 > 1%
 - [hikari-pool-saturation](hikari-pool-saturation.md) — Hikari active/max > 90%
 - [gc-pause-too-long](gc-pause-too-long.md) — 평균 GC pause > 200ms
 - [inventory-lock-timeout-high](inventory-lock-timeout-high.md) — 분산락 timeout 비율 > 1%
+
+Phase 3 Step 2 — slow-query-detector 적용 후 추가:
+- [n-plus-one-detected](n-plus-one-detected.md) — N+1 패턴 감지 (`n_plus_one_total > 0`)
 
 ## 다음에 추가할 후보
 
