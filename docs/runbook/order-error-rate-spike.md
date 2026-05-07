@@ -14,14 +14,14 @@ clamp_min(sum(rate(http_server_requests_seconds_count{application="order-service
 > 5xx 만 진짜 장애로 봅니다.
 
 ## Impact
-- P1 (가장 높은 심각도): 주문 실패 → 매출 직격
+- P1 (가장 높은 심각도): 주문 실패 → 매출 영향
 - 502는 결제 쪽 인프라 장애, 503 은 재고 쪽 인프라 장애를 강하게 시사
 
 ## Diagnosis
 
 ### 첫 5분
 
-1. **응답 헤더 `X-Order-Outcome`** — `INVENTORY_INFRA` / `PAYMENT_INFRA` 분포를 보면 어느 의존성이 죽는지 즉답
+1. **응답 헤더 `X-Order-Outcome`** — `INVENTORY_INFRA` / `PAYMENT_INFRA` 분포로 어느 의존성이 죽었는지 바로 좁힐 수 있음
 2. **Loki**:
    ```
    {service_name="order-service"} |= "ERROR"
