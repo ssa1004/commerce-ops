@@ -1,28 +1,24 @@
 # mini-shop-observability
 
-> 작은 이커머스 마이크로서비스를 직접 운영하면서 **관측성 인프라**, **Spring Boot 운영 라이브러리**, **장애 분석 케이스 스터디**를 함께 쌓는 포트폴리오 프로젝트.
+작은 이커머스 마이크로서비스(주문/결제/재고)를 직접 운영하면서, 그 위에 **풀 옵저버빌리티 스택**, **자체 Spring Boot 운영 라이브러리**, **장애 분석 회고**를 함께 쌓아가는 포트폴리오 프로젝트입니다.
 
-이 레포의 목적은 두 가지입니다.
+> 코드만 보여주는 레포가 아니라, **운영자 관점에서 무엇을 보고 어떻게 판단했는지** 까지 드러나도록 만들고 있습니다.
 
-1. **포트폴리오** — 서비스 코드뿐 아니라 운영 설계, 관측성, 알람, 장애 대응 문서까지 한 저장소에서 보여준다.
-2. **개인 학습** — 백엔드와 DevOps 역량을 "실제 운영에서 무엇을 보고 어떻게 판단할 것인가"의 형태로 축적한다.
+## 핵심 데모 — 90초 안에 보여주고 싶은 것
 
-## Current Status
+`POST /orders` 한 번을 던지면 — `order → inventory.reserve → payment.charge → mock-pg`까지 4개 서비스를 거치는 흐름이, **하나의 trace** 안에 모든 span으로 묶여 Grafana에 그려집니다. trace에서 span을 누르면 같은 `trace_id`의 로그로 점프하고, 결제가 실패하면 자동 보상으로 재고가 복구되며, 응답 헤더 `X-Order-Outcome`이 정확히 어떤 종류의 실패인지 알려줍니다.
 
-**Phase 1 (MVP) 완료** — 3개 서비스가 동기 REST로 묶여 happy/실패 경로 모두 동작.
+뒤에서는 5개의 알람 룰이 SLO를 지키고 있고, 알람마다 [런북](docs/runbook/)이 "지금 어디부터 보면 됩니다"를 안내합니다. 실제로 카오스를 주입해 발견한 첫 부정합 사례는 [case-studies/](case-studies/)에 회고로 남아 있습니다.
 
-| 영역 | 현재 상태 |
-|---|---|
-| Docker Compose infra | PostgreSQL, Redis, Kafka, Prometheus, Loki, Tempo, Grafana, Alertmanager |
-| Grafana dashboards | Infra overview + JVM+HTTP (3개 서비스 통합 view) 자동 프로비저닝 |
-| OpenTelemetry | 3개 서비스 자동 계측 (web/JDBC/Redis), traces+logs OTLP→collector→Tempo/Loki, trace ↔ log 상관관계 |
-| Services | order / payment / inventory 모두 Spring Boot 3.5 + Java 21, Testcontainers 통합 테스트 포함 |
-| Order orchestration | reserve → pay → on-failure compensate (SAGA 동기 버전), `X-Order-Outcome` 헤더로 분류 |
-| Idempotency | inventory-service `(orderId, productId)` 단위 reserve/release 멱등 |
-| Distributed lock | Redisson 분산락 + JPA `@Version` 이중 안전망, `inventory_lock_acquire_seconds` 메트릭 |
-| Load test | k6 baseline (`POST /orders` happy path 시뮬레이션) |
-| Custom modules | Phase 3 (설계 문서 단계) |
-| Case studies | 운영 회고 템플릿 준비, Phase 2 이후부터 실제 케이스 누적 |
+## 무엇이 들어있나
+
+- **3개 마이크로서비스** (Spring Boot 3.5 / Java 21): `order` → `payment` → `inventory`, 동기 REST + SAGA 보상
+- **Outbox 패턴** (order-service): Aggregate 변경과 같은 트랜잭션에 이벤트 행을 기록, 별도 폴러가 Kafka로 발행 (`SELECT … FOR UPDATE SKIP LOCKED`)
+- **풀 옵저버빌리티 스택**: OpenTelemetry → Prometheus(메트릭) + Loki(로그) + Tempo(트레이스) → Grafana, trace ↔ log 양방향 점프 데이터소스 자동 프로비저닝
+- **5개 알람 + 런북**: p99 latency, 5xx 비율, HikariCP 포화, GC pause, 분산락 timeout — 각각 발화 조건/영향/진단 흐름/완화책/post-mortem 가이드
+- **장애 분석 회고**: 카오스 주입 → trace 분석 → 진짜 부정합을 잡아낸 첫 케이스
+
+전체 구조와 설계 결정의 *왜*는 [ARCHITECTURE.md](ARCHITECTURE.md) / [docs/decision-log.md](docs/decision-log.md) 참고.
 
 ---
 
@@ -33,8 +29,7 @@
 │  order   │ ──▶ │ payment  │     │ inventory  │
 │ service  │     │ service  │     │  service   │
 └────┬─────┘     └────┬─────┘     └─────┬──────┘
-     │                │                 │
-     │   Kafka events │                 │
+     │  Kafka events (order/payment/inventory.events)
      ├────────────────┴─────────────────┤
      │                                  │
 ┌────▼──────────────────────────────────▼────┐
@@ -44,7 +39,6 @@
 ┌────▼─────┐  ┌─────▼────┐  ┌──────▼─────┐
 │Prometheus│  │   Loki   │  │   Tempo    │
 └────┬─────┘  └─────┬────┘  └──────┬─────┘
-     │              │              │
      └──────────────┼──────────────┘
                     ▼
               ┌──────────┐
@@ -52,81 +46,105 @@
               └──────────┘
 ```
 
-- **Target services**: `order` / `payment` / `inventory` (Spring Boot 3, Java 21)
-- **Data**: PostgreSQL (per-service), Redis, Kafka
-- **Observability**: OpenTelemetry → Prometheus(metrics) + Loki(logs) + Tempo(traces) → Grafana
-- **Custom modules**: `modules/` 아래의 자체 Spring Boot 운영 라이브러리들이 서비스에 적용됨
-- **Load / Chaos**: k6 시나리오, 장애 주입 가이드
+## 진행 상황
 
-자세한 목표 구조와 설계 결정은 [ARCHITECTURE.md](ARCHITECTURE.md) 참고.
+| Phase | 상태 |
+|---|---|
+| **Phase 0** — 레포 스캐폴드 + 인프라 설정 | ✅ |
+| **Phase 1** — 3개 서비스 + 동기 SAGA + JVM/HTTP 대시보드 | ✅ |
+| **Phase 2** — OTel 자동계측, Tempo/Loki, 알람 5개, Outbox 패턴, 첫 케이스 스터디 | ✅ (Step 3b만 남음) |
+| **Phase 3** — 자체 Spring Boot 운영 라이브러리 (`modules/`) | 설계 단계 |
+| **Phase 4** — 카오스 시나리오 누적 + 케이스 스터디 누적 (지속) | 진행 중 |
+
+자세한 단계는 [ROADMAP.md](ROADMAP.md) 참고.
 
 ---
 
 ## Quick Start
 
-### 1) 인프라 + 의존성 (Postgres / Redis / Kafka / 옵저버빌리티 스택)
+### 1. 인프라 띄우기
 
 ```bash
 docker compose -f infra/docker-compose.yml up -d
 ```
 
+Postgres, Redis, Kafka, Prometheus, Loki, Tempo, Grafana, Alertmanager가 한 번에 올라옵니다. Grafana는 데이터소스와 대시보드까지 자동 프로비저닝됩니다.
+
 | URL | 용도 |
 |---|---|
-| http://localhost:3000 | Grafana (admin / admin) — JVM+HTTP 대시보드 자동 프로비저닝됨 |
-| http://localhost:9090 | Prometheus |
+| http://localhost:3000 | Grafana — `admin / admin` |
+| http://localhost:9090 | Prometheus (`/alerts`에서 발화 중인 알람 확인) |
 | http://localhost:3200 | Tempo |
 | http://localhost:9093 | Alertmanager |
 
-설정 파일 검증만: `docker compose -f infra/docker-compose.yml config`
+설정만 검증하려면: `docker compose -f infra/docker-compose.yml config`
 
-### 2) 서비스 3개 실행 (각 셸에서)
+### 2. 서비스 3개 실행
 
 ```bash
-cd services/order-service     && ./gradlew bootRun   # 8081
-cd services/payment-service   && ./gradlew bootRun   # 8082
-cd services/inventory-service && ./gradlew bootRun   # 8083
+# 각각 다른 셸에서
+cd services/order-service     && ./gradlew bootRun   # :8081
+cd services/payment-service   && ./gradlew bootRun   # :8082
+cd services/inventory-service && ./gradlew bootRun   # :8083
 ```
 
-JDK 21 미설치라면 Gradle 툴체인(foojay-resolver)이 자동 다운로드합니다.
+JDK 21이 없어도 됩니다 — Gradle 툴체인이 foojay에서 자동 다운로드합니다.
 
-### 3) end-to-end 데모
+### 3. 흐름 직접 만져보기
 
 ```bash
-# happy path → 201 PAID
+# 정상 — 201 Created, status=PAID
 curl -s -X POST localhost:8081/orders \
-  -H "Content-Type: application/json" \
+  -H 'Content-Type: application/json' \
   -d '{"userId":42,"items":[{"productId":1001,"quantity":2,"price":9990}]}' | jq
 
-# 결제 실패 시뮬레이션 → 402 PAYMENT_DECLINED + 재고 자동 복구
-MOCK_PG_FAILURE_RATE=1.0 # payment-service 재시작 시 적용
-curl -s -X POST localhost:8081/orders \
-  -H "Content-Type: application/json" \
-  -d '{"userId":42,"items":[{"productId":1001,"quantity":1,"price":9990}]}' -i
+# 결제 항상 실패 시뮬레이션 — 402 PAYMENT_DECLINED + 재고 자동 복구
+# (payment-service를 MOCK_PG_FAILURE_RATE=1.0 으로 재시작한 뒤)
+curl -i -X POST localhost:8081/orders \
+  -H 'Content-Type: application/json' \
+  -d '{"userId":42,"items":[{"productId":1001,"quantity":1,"price":9990}]}'
 
-# 재고 부족 → 409 OUT_OF_STOCK + 이미 reserve된 다른 아이템 자동 복구
-curl -s -X POST localhost:8081/orders \
-  -H "Content-Type: application/json" \
-  -d '{"userId":42,"items":[{"productId":1003,"quantity":9999,"price":9990}]}' -i
+# 재고 부족 — 409 OUT_OF_STOCK + 앞에서 reserve된 다른 아이템 자동 복구
+curl -i -X POST localhost:8081/orders \
+  -H 'Content-Type: application/json' \
+  -d '{"userId":42,"items":[{"productId":1003,"quantity":9999,"price":9990}]}'
 ```
 
-응답 헤더 `X-Order-Outcome`에 `OUT_OF_STOCK / PAYMENT_DECLINED / INVENTORY_INFRA / PAYMENT_INFRA` 분류가 들어옵니다.
+응답 헤더 `X-Order-Outcome`에 `OUT_OF_STOCK / PAYMENT_DECLINED / INVENTORY_INFRA / PAYMENT_INFRA` 분류가 실립니다 — 클라이언트가 5xx 디버깅 없이 어디서 막혔는지 즉답.
 
-### 4) 부하 테스트 (선택)
+### 4. 부하 테스트 (선택)
 
 ```bash
 k6 run load/baseline.js
 ```
 
-### 5) 메트릭 / 로그 / 트레이스 한 화면에서 보기
+### 5. Grafana에서 메트릭 → 로그 → 트레이스 점프
 
-3개 서비스 모두 OpenTelemetry Spring Boot starter로 자동 계측되어 있습니다 (Phase 2 Step 1).
+OpenTelemetry가 3개 서비스를 자동 계측하고 있어, 한 요청을 trace 하나로 묶어 보여줍니다.
 
-- **메트릭** — Grafana → Dashboards → "JVM + HTTP"
-- **트레이스** — Grafana → Explore → Tempo. `POST /orders` 한 번이 `order → inventory.reserve → payment.charge → mock-pg`까지 한 trace로 묶여 보임.
-- **로그** — Grafana → Explore → Loki. 쿼리 예: `{service_name="order-service"}` 또는 trace ID로 필터.
-- **점프**: Tempo trace 패널에서 span → "Logs for this span" 버튼 → Loki로 해당 trace_id 로그 자동 필터. 역방향(로그 → trace)도 동일.
+- **대시보드** — Grafana → Dashboards → **JVM + HTTP** (3개 서비스 통합)
+- **트레이스** — Grafana → Explore → **Tempo** → 최근 trace 클릭. order/inventory/payment/mock-pg 5~7개 span이 한 그림.
+- **로그** — Tempo span에서 *"Logs for this span"* 클릭하면 Loki에서 같은 `trace_id`만 자동 필터. 역방향도 가능.
+- **콘솔** — 서비스 stdout에도 `[trace_id/span_id]`가 인라인으로 찍혀 grep 가능.
 
-서비스 콘솔에도 `[trace_id/span_id]`가 인라인으로 찍히므로 로컬 개발 중에도 grep 가능합니다.
+---
+
+## 추천 읽는 순서
+
+5분 정도로 의도를 파악하고 싶다면:
+
+1. **여기 README 상단** — 뭘 보여주려는 레포인지
+2. [ARCHITECTURE.md](ARCHITECTURE.md) — 컴포넌트와 데이터 흐름
+3. [docs/decision-log.md](docs/decision-log.md) — 어떤 trade-off를 받아들였는지 (10개 ADR)
+4. [case-studies/](case-studies/) — 실제로 무엇을 발견했는지
+5. [docs/runbook/](docs/runbook/) — 알람이 떴을 때의 대응 절차
+
+서비스/인프라 코드를 깊게 보려면 각 디렉토리의 README:
+- [services/order-service/README.md](services/order-service/README.md) — SAGA orchestration + Outbox
+- [services/inventory-service/README.md](services/inventory-service/README.md) — Redisson 분산락 + 멱등성
+- [services/payment-service/README.md](services/payment-service/README.md) — mock PG + afterCommit publish
+- [infra/README.md](infra/README.md) — 옵저버빌리티 스택 운영 가이드
+- [modules/README.md](modules/README.md) — Phase 3 자체 라이브러리 설계
 
 ---
 
@@ -135,39 +153,21 @@ k6 run load/baseline.js
 ```
 mini-shop-observability/
 ├── README.md / ARCHITECTURE.md / ROADMAP.md
-├── docs/                # decision log, SLO, runbook
-├── services/            # 마이크로서비스 (order/payment/inventory)
-├── modules/             # ✨ 자체 Spring Boot 운영 라이브러리
-├── infra/               # docker-compose + 옵저버빌리티 스택 설정
-├── load/                # k6 부하 시나리오
-├── chaos/               # 장애 주입 시나리오
-├── case-studies/        # ⭐ 실제 운영하며 발견한 케이스 회고
-└── .github/workflows/   # CI
+├── docs/
+│   ├── decision-log.md      # ADR 10개
+│   ├── runbook/             # 알람별 대응 절차
+│   └── slo.md
+├── services/
+│   ├── order-service/       # 주문 + SAGA + Outbox
+│   ├── payment-service/     # 결제 + mock-pg
+│   └── inventory-service/   # 재고 + 분산락
+├── modules/                 # Phase 3: 자체 Spring Boot 운영 라이브러리 (설계 단계)
+├── infra/                   # docker-compose + Prometheus/Grafana/Loki/Tempo/Alertmanager 설정
+├── load/                    # k6 시나리오
+├── chaos/                   # 장애 주입 시나리오
+├── case-studies/            # 실제 부딪힌 케이스 회고
+└── .github/workflows/       # CI: docker compose / promtool / amtool / Gradle build
 ```
-
----
-
-## Review Path
-
-포트폴리오 검토자가 짧은 시간 안에 의도를 파악할 수 있도록 아래 순서로 문서를 배치했습니다.
-
-1. [ARCHITECTURE.md](ARCHITECTURE.md) — 목표 시스템 구조와 주요 데이터 흐름
-2. [docs/decision-log.md](docs/decision-log.md) — 기술 선택 이유
-3. [infra/README.md](infra/README.md) — 현재 실행 가능한 인프라와 검증 방법
-4. [modules/README.md](modules/README.md) — 직접 만들 운영 라이브러리 목록
-5. [case-studies/_template.md](case-studies/_template.md) — 장애 분석을 어떻게 남길지에 대한 기준
-
----
-
-## Roadmap
-
-진행 상황은 [ROADMAP.md](ROADMAP.md) 참고. 큰 흐름:
-
-- [x] Phase 0 — 레포 스캐폴드
-- [x] Phase 1 — MVP: 3개 서비스 골격 + 동기 REST orchestration + 기본 대시보드
-- [ ] Phase 2 — OTel 계측 + Loki/Tempo + 의미 있는 알람 + k6
-- [ ] Phase 3 — 자체 운영 모듈 적용
-- [ ] Phase 4 — 카오스 + 케이스 스터디 누적 (지속)
 
 ---
 

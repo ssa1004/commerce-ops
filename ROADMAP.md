@@ -54,7 +54,7 @@
 
 ---
 
-## Phase 2 — Observability 완성
+## Phase 2 — Observability 완성 (Step 3b만 남음)
 
 > "장애가 나면 어디가 아픈지 한 화면에서 보인다"
 
@@ -88,9 +88,10 @@
 - [ ] order-service consumer: 이벤트로 Order 상태 전이 + 보상 (PaymentFailed → InventoryRelease 명령)
 - [ ] payment/inventory도 outbox로 격상 (ADR-009 후속)
 
-### Step 4 — 첫 트레이스 분석 케이스 스터디
-- [ ] 카오스 1개 (예: `MOCK_PG_LATENCY_MEAN_MS=1500`)
-- [ ] 트레이스 분석 → `case-studies/` 회고 1편
+### Step 4 — 첫 트레이스 분석 케이스 스터디 ✅
+- [x] 카오스 (`MOCK_PG_LATENCY_MEAN_MS=1500`) → order p99 / 5xx 동시 알람 발화
+- [x] Tempo + Loki에서 cross-service trace로 in-doubt 윈도우 식별
+- [x] [case-studies/2026-05-07-payment-timeout-race.md](case-studies/2026-05-07-payment-timeout-race.md) 회고 작성 (timeout 단조감소 원칙, 후속 작업 4건 등록)
 
 ---
 
