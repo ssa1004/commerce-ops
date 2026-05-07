@@ -94,3 +94,16 @@ groups:
             Hot product에 대한 contention 또는 락 lease가 너무 짧을 가능성.
             대상 productId가 어떤 것인지(`/inventories/{id}` 추세), 락 wait/lease 설정 점검.
           runbook_url: https://github.com/ssa1004/mini-shop-observability/blob/main/docs/runbook/inventory-lock-timeout-high.md
+
+      - alert: n_plus_one_detected
+        expr: |
+          sum by (application) (increase(n_plus_one_total[5m])) > 0
+        for: 5m
+        labels:
+          severity: P2
+        annotations:
+          summary: "{{ $labels.application }}에서 N+1 패턴 감지"
+          description: |
+            slow-query-detector 모듈이 같은 정규화 SQL이 임계 횟수 반복되는 패턴을 감지함.
+            로그에서 "Suspected N+1 (...)" 메시지의 stack trace로 어느 호출자가 만들었는지 식별 → @EntityGraph / fetch join으로 수정.
+          runbook_url: https://github.com/ssa1004/mini-shop-observability/blob/main/docs/runbook/n-plus-one-detected.md
