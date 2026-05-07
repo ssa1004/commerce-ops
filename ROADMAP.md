@@ -54,7 +54,7 @@
 
 ---
 
-## Phase 2 — Observability 완성 (Step 3b만 남음)
+## Phase 2 — Observability 완성 (Step 3c만 남음)
 
 > "장애가 나면 어디가 아픈지 한 화면에서 보인다"
 
@@ -81,9 +81,15 @@
 - [x] OTel Kafka auto-instrumentation으로 producer span 자동 생성
 - [x] producer idempotence + acks=all, consumer 멱등성은 도메인 키로 (ADR-010)
 
-### Step 3b — Kafka choreography로 흐름 자체 비동기화
-- [ ] POST /orders → 202 Accepted + outbox에 OrderCreated만 기록 (sync REST orchestration 제거)
-- [ ] inventory-service: OrderCreated 소비 → reserve → InventoryReservationSucceeded/Failed
+### Step 3b — Inbox + Reconciliation (이벤트 받는 쪽 + 부정합 모니터링) ✅
+- [x] order-service: `payment_inbox`, `inventory_inbox` 테이블 + UNIQUE 키로 멱등 (ADR-011)
+- [x] `@KafkaListener` 두 개 (payment.events / inventory.events) — 멱등 upsert
+- [x] `ReconciliationJob` (스케줄): 케이스 스터디의 `Order=FAILED ∧ Payment=SUCCESS` 부정합을 카운터로 노출
+- [x] `inbox.consume{topic, outcome}`, `reconciliation.inconsistency{kind}` 메트릭
+
+### Step 3c — Kafka choreography로 흐름 자체 비동기화
+- [ ] POST /orders → 202 Accepted + outbox에 OrderRequested만 기록 (sync REST orchestration 제거)
+- [ ] inventory-service: OrderRequested 소비 → reserve → InventoryReservationSucceeded/Failed
 - [ ] payment-service: InventoryReservationSucceeded 소비 → charge → PaymentResult
 - [ ] order-service consumer: 이벤트로 Order 상태 전이 + 보상 (PaymentFailed → InventoryRelease 명령)
 - [ ] payment/inventory도 outbox로 격상 (ADR-009 후속)

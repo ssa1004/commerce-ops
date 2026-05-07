@@ -183,12 +183,12 @@ mini-shop:
    여기서는 (orderId 같은 외부 키로) order.status ≠ payment.status인 행을 주기적으로 스캔하는 reconciliation job이 있어야 한다. 후속 작업으로 등록.
 4. **이런 경계 케이스가 동기 호출의 본질적 단점이다.** Phase 2 Step 3b로 가는 이유는 이런 함정을 구조적으로 피하기 위함.
 
-## 후속 작업 (이슈로 등록할 것)
+## 후속 작업
 
 - [ ] `payment-service`의 `PG_READ_TIMEOUT_MS` 기본값 5000 → 3000 변경 (단기 fix)
-- [ ] reconciliation 스크립트 또는 잡: `orders.status='FAILED' AND payments.status='SUCCESS'` 행 주기 점검
+- [x] **reconciliation 잡**: `payment_inbox`에 PaymentSucceeded가 있는데 Order는 FAILED인 케이스를 주기적으로 카운터로 노출 — Phase 2 Step 3b로 구현 (ADR-011, [`ReconciliationJob`](../services/order-service/src/main/java/io/minishop/order/reconciliation/ReconciliationJob.java))
 - [ ] [order-error-rate-spike 런북](../docs/runbook/order-error-rate-spike.md)에 "in-doubt 가능성" 진단 단계 추가
-- [ ] Phase 2 Step 3b: 결제를 Kafka 비동기로 (이 케이스가 직접적 동기)
+- [ ] Phase 2 Step 3c: 결제를 Kafka 비동기로 (이 케이스가 직접적 동기)
 
 ## 참고
 
