@@ -3,6 +3,8 @@ mini-shop:
   outbox:
     poller:
       enabled: false
+  reconciliation:
+    enabled: false
 spring:
   kafka:
     listener:
