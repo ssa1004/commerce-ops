@@ -1,27 +1,86 @@
 # payment-service
 
-결제 처리. 외부 PG는 내부 mock 컨트롤러로 시뮬레이션 (지연·실패율 조절).
+결제 처리. 외부 PG는 같은 앱 내부 mock 컨트롤러로 시뮬레이션 (지연·실패율 환경변수로 조절).
 
-## API (Phase 1 목표)
+## API
 
-| Method | Path | 설명 |
+| Method | Path | 상태 |
 |---|---|---|
-| POST | `/payments` | 결제 처리 |
-| GET | `/payments/{id}` | 결제 조회 |
+| POST | `/payments` | ✅ Step 2 |
+| GET | `/payments/{id}` | ✅ Step 2 |
+| POST | `/mock-pg/charge` | ✅ Step 2 (외부 PG 시뮬레이션) |
+| GET | `/mock-pg/config` | ✅ Step 2 (현재 시뮬레이션 파라미터 조회) |
 
-## 외부 PG Mock
+## 도메인 모델
 
-`/mock-pg/charge` 엔드포인트가 환경변수에 따라:
-- 평균 200ms 지연 (정규분포)
-- 1% 확률 5xx
-- 0.5% 확률 30s 지연 (timeout 데모)
+- `Payment` — id, orderId, userId, amount, status, externalRef, failureReason, attempts, timestamps
+- `PaymentStatus` — PENDING / SUCCESS / FAILED
 
-→ Phase 2의 chaos 시나리오에서 이 수치를 동적으로 조절.
+흐름: `Payment.pending(...)` → save (PENDING) → `PgClient.charge(...)` 호출 → 응답에 따라 `markSuccess` 또는 `markFailed`. 결제 거절 시 HTTP 402 (Payment Required) 응답.
 
-## TODO (Phase 1)
+## Mock PG 시뮬레이션
 
-- [ ] Spring Boot 프로젝트 초기화
-- [ ] `Payment` 엔티티 + Flyway
-- [ ] `POST /payments` 동기 처리
-- [ ] mock-pg 컨트롤러 (지연/실패 시뮬레이션)
-- [ ] 메트릭: 결제 성공률, p99 응답시간
+`/mock-pg/charge`가 외부 PG를 흉내냄. 환경변수로 행동 조절:
+
+| 변수 | 기본값 | 의미 |
+|---|---|---|
+| `MOCK_PG_LATENCY_MEAN_MS` | 200 | 평균 지연 (ms) |
+| `MOCK_PG_LATENCY_STDDEV_MS` | 50 | 지연 표준편차 (정규분포) |
+| `MOCK_PG_FAILURE_RATE` | 0.01 | 5xx 응답 확률 |
+| `MOCK_PG_TIMEOUT_RATE` | 0.005 | 의도적 timeout 확률 |
+| `MOCK_PG_TIMEOUT_MS` | 30000 | timeout 시 멈출 시간 (ms) |
+| `MOCK_PG_ENABLED` | true | mock-pg 컨트롤러 활성화 (운영 환경에선 false) |
+
+PgClient 측 timeout:
+
+| 변수 | 기본값 |
+|---|---|
+| `PG_CONNECT_TIMEOUT_MS` | 1000 |
+| `PG_READ_TIMEOUT_MS` | 5000 |
+
+## 실행
+
+```bash
+docker compose -f ../../infra/docker-compose.yml up -d postgres
+./gradlew bootRun
+```
+
+기본값: `localhost:5432/paymentdb`, 포트 8082.
+
+```bash
+# happy path
+curl -X POST localhost:8082/payments \
+  -H "Content-Type: application/json" \
+  -d '{"orderId":1, "userId":42, "amount":39880.00}'
+
+# mock 파라미터 조정해서 실패 시뮬레이션
+MOCK_PG_FAILURE_RATE=1.0 ./gradlew bootRun
+```
+
+## 메트릭
+
+`/actuator/prometheus` — JVM/HTTP. Phase 2에서 결제 성공률·외부 PG 지연 분리 메트릭 추가.
+
+## 테스트
+
+```bash
+./gradlew test
+```
+
+- `PaymentServiceApplicationTests` — Testcontainers Postgres + `@MockitoBean PgClient`. 결제 happy/실패 경로
+- `MockPgControllerTests` — failure-rate=0일 때 `/mock-pg/charge`가 항상 OK 응답을 주는지
+
+**Docker 데몬 필요**.
+
+## Step 2 체크리스트
+
+- [x] Spring Boot 프로젝트 초기화
+- [x] Flyway 마이그레이션 (`payments`)
+- [x] 도메인 + Repository
+- [x] PgClient (RestClient) + 타임아웃·에러 처리
+- [x] MockPgController (지연/실패/타임아웃 시뮬레이션)
+- [x] PaymentService 결제 처리 로직 (성공/실패/예외 분기)
+- [x] PaymentController (POST/GET)
+- [x] Micrometer Prometheus 노출
+- [x] Testcontainers 통합 테스트 + mock-pg 단위 테스트
+- [x] Prometheus scrape 활성화 (8082)
