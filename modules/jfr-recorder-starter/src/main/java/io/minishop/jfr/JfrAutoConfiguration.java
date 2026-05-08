@@ -1,10 +1,14 @@
 package io.minishop.jfr;
 
 import io.micrometer.core.instrument.MeterRegistry;
+import io.minishop.jfr.upload.JfrChunkUploader;
+import io.minishop.jfr.upload.JfrUploadProperties;
+import io.minishop.jfr.upload.NoopJfrChunkUploader;
 import org.springframework.boot.actuate.autoconfigure.endpoint.condition.ConditionalOnAvailableEndpoint;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -32,12 +36,36 @@ import org.springframework.context.annotation.Bean;
 @ConditionalOnClass(name = {"jdk.jfr.FlightRecorder", "io.micrometer.core.instrument.MeterRegistry"})
 @ConditionalOnBean(MeterRegistry.class)
 @ConditionalOnProperty(prefix = "mini-shop.jfr", name = "enabled", havingValue = "true", matchIfMissing = true)
-@EnableConfigurationProperties(JfrRecorderProperties.class)
+@EnableConfigurationProperties({JfrRecorderProperties.class, JfrUploadProperties.class})
 public class JfrAutoConfiguration {
 
     @Bean(initMethod = "start", destroyMethod = "stop")
-    public JfrRecorder jfrRecorder(JfrRecorderProperties props, MeterRegistry meterRegistry) {
-        return new JfrRecorder(props, meterRegistry);
+    public JfrRecorder jfrRecorder(JfrRecorderProperties props,
+                                   MeterRegistry meterRegistry,
+                                   JfrChunkUploader uploader,
+                                   JfrUploadProperties uploadProps) {
+        return new JfrRecorder(props, meterRegistry, uploader, uploadProps.uploadAdHocDumps());
+    }
+
+    /**
+     * uploader 선택 — properties + 클래스 가용성 두 조건. 운영자가 enabled=false 또는 backend=noop
+     * 으로 두면 자동으로 noop. AWS SDK 가 classpath 에 없으면 S3 구현은 자동 비활성 (의존성 누락
+     * 으로 사용자 앱이 깨지지 않게).
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public JfrChunkUploader jfrChunkUploader(JfrUploadProperties uploadProps,
+                                              MeterRegistry meterRegistry) {
+        if (!uploadProps.isActive()) {
+            return new NoopJfrChunkUploader();
+        }
+        if (!isS3SdkAvailable()) {
+            return new NoopJfrChunkUploader();
+        }
+        // 별도 factory 클래스로 위임 — 이 메서드 시그니처에 SDK 클래스가 등장하지 않게 해
+        // OnBeanCondition 의 BeanTypeDeductionException 단계에서 NoClassDefFoundError 가
+        // 발생하지 않도록 (reflection 이 메서드의 LDC constant 까지 접근).
+        return io.minishop.jfr.upload.S3ClientFactory.build(uploadProps, meterRegistry);
     }
 
     /**
@@ -51,5 +79,16 @@ public class JfrAutoConfiguration {
     @ConditionalOnAvailableEndpoint(endpoint = JfrEndpoint.class)
     public JfrEndpoint jfrEndpoint(JfrRecorder recorder) {
         return new JfrEndpoint(recorder);
+    }
+
+    /** SDK 가 classpath 에 있는지 — S3Client 가 없으면 false. NoClassDefFoundError 차단. */
+    private static boolean isS3SdkAvailable() {
+        try {
+            Class.forName("software.amazon.awssdk.services.s3.S3Client",
+                    false, JfrAutoConfiguration.class.getClassLoader());
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
     }
 }

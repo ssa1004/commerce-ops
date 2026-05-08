@@ -77,6 +77,36 @@ management:
 | `jfr.recording.active` | gauge | 1 = 정상 동작, 0 = JFR 사용 불가 |
 | `jfr.rollover.events{kind=rollover, outcome=ok\|error}` | counter | rollover 결과 |
 | `jfr.rollover.events{kind=retention, outcome=deleted\|error}` | counter | retention 적용 결과 |
+| `jfr.upload.events{backend, outcome=ok\|error\|list_error}` | counter | 원격 업로드 결과 (활성 시) |
+| `jfr.upload.duration{backend}` | timer | 업로드 소요 시간 (활성 시) |
+
+## 원격 업로드 (S3 / MinIO)
+
+JFR chunk 가 디스크에만 있으면 컨테이너가 죽거나 노드가 빠지면 같이 사라집니다. `JfrChunkUploader` 가 chunk rollover 직후 비동기로 원격 사본을 만들어 *컨테이너 사망 직전 데이터까지* 보존합니다.
+
+- 기본 disable. 활성화는 `mini-shop.jfr.upload.enabled=true`.
+- AWS SDK 가 classpath 에 없으면 자동 noop (의존성 부재로 부팅이 깨지지 않게).
+- 사용자 앱에서 `software.amazon.awssdk:s3` 를 직접 implementation 으로 추가하면 활성 가능.
+
+```yaml
+mini-shop:
+  jfr:
+    upload:
+      enabled: true
+      backend: s3                        # s3 / minio / noop
+      bucket: minishop-jfr
+      region: us-east-1
+      endpoint: ""                       # MinIO 같은 호환 스토리지에서만
+      key-prefix: minishop/dev
+      pod-id: ""                         # blank → HOSTNAME 환경변수
+      access-key: ""                     # blank → DefaultCredentialsProvider (IAM role)
+      secret-key: ""
+      upload-ad-hoc-dumps: false         # ad-hoc dump 도 업로드할지
+```
+
+key 구조: `{prefix}/{podId}/{yyyy/MM/dd}/HHmmss-filename.jfr`. yyyy/MM/dd prefix 로 lifecycle 정책 (예: 90일 후 Glacier 이관) 적용이 쉽습니다. ADR-018 참조.
+
+GCS / Azure Blob / 자체 스토리지를 쓰려면 사용자 앱에서 `JfrChunkUploader` 를 직접 bean 으로 정의하세요 — 자동 등록을 건너뜁니다.
 
 ## 보안 / PII
 

@@ -2,6 +2,9 @@ package io.minishop.jfr;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.minishop.jfr.upload.JfrChunkUploader;
+import io.minishop.jfr.upload.NoopJfrChunkUploader;
+import io.minishop.jfr.upload.S3JfrChunkUploader;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.actuate.autoconfigure.endpoint.EndpointAutoConfiguration;
@@ -129,11 +132,70 @@ class JfrAutoConfigurationTests {
                 });
     }
 
+    /**
+     * upload 비활성 — backend=noop (또는 빈 값) 일 때 NoopJfrChunkUploader 가 선택되어야.
+     * 사용자가 의존성/설정을 안 주는 가장 흔한 경로 — *부팅이 깨지지 않는* 회귀.
+     */
+    @Test
+    void usesNoopUploader_whenUploadDisabled() {
+        baseRunner().run(ctx -> {
+            assertThat(ctx).hasSingleBean(JfrChunkUploader.class);
+            assertThat(ctx.getBean(JfrChunkUploader.class)).isInstanceOf(NoopJfrChunkUploader.class);
+        });
+    }
+
+    /**
+     * upload 활성 + S3 backend — S3JfrChunkUploader 가 선택. region/bucket 만 주면 됨 (정적
+     * 키가 없으면 DefaultCredentialsProvider 로 fallback — 본 테스트에선 실제 호출은 없으므로
+     * 자격증명 검증은 건너뜀).
+     */
+    @Test
+    void usesS3Uploader_whenUploadActive() {
+        baseRunner().withPropertyValues(
+                        "mini-shop.jfr.upload.enabled=true",
+                        "mini-shop.jfr.upload.backend=s3",
+                        "mini-shop.jfr.upload.bucket=test-bucket",
+                        "mini-shop.jfr.upload.region=us-east-1",
+                        "mini-shop.jfr.upload.access-key=DEV",
+                        "mini-shop.jfr.upload.secret-key=DEV"
+                )
+                .run(ctx -> {
+                    assertThat(ctx).hasSingleBean(JfrChunkUploader.class);
+                    assertThat(ctx.getBean(JfrChunkUploader.class)).isInstanceOf(S3JfrChunkUploader.class);
+                });
+    }
+
+    /**
+     * 사용자가 직접 JfrChunkUploader bean 을 정의했다면 자동 등록을 건너뛰어야 (커스텀 backend
+     * — GCS / Azure 등 — 를 사용자가 끼울 수 있게).
+     */
+    @Test
+    void respectsUserProvidedUploaderBean() {
+        baseRunner()
+                .withUserConfiguration(CustomUploaderConfig.class)
+                .run(ctx -> {
+                    assertThat(ctx).hasSingleBean(JfrChunkUploader.class);
+                    assertThat(ctx.getBean(JfrChunkUploader.class).backendName()).isEqualTo("custom");
+                });
+    }
+
     @Configuration
     static class MeterRegistryConfig {
         @Bean
         MeterRegistry meterRegistry() {
             return new SimpleMeterRegistry();
+        }
+    }
+
+    @Configuration
+    static class CustomUploaderConfig {
+        @Bean
+        JfrChunkUploader customUploader() {
+            return new JfrChunkUploader() {
+                @Override public String upload(java.nio.file.Path localChunk) { return "custom://x"; }
+                @Override public java.util.List<String> listRemote(int max) { return java.util.List.of(); }
+                @Override public String backendName() { return "custom"; }
+            };
         }
     }
 }
