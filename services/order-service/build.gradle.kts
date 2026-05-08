@@ -48,6 +48,11 @@ dependencies {
 	// Resilience4j 의 Bulkhead 는 *고정* — 적응형이 아님. 그래서 별도 라이브러리.
 	implementation("com.netflix.concurrency-limits:concurrency-limits-core:0.5.3")
 
+	// Spring StateMachine — OrderSAGA 의 *상태 + 트리거 + 가드 + 액션* 을 명시 모델로 표현.
+	// 기존의 동기 if/else SAGA 와 *병행* 동작 (initial step) 시키며 결정 일관성을 검증한다.
+	// 후속 step 에서 진실의 원천을 StateMachine 으로 옮길 예정 — ADR-019 참고.
+	implementation("org.springframework.statemachine:spring-statemachine-core:4.0.1")
+
 	runtimeOnly("org.postgresql:postgresql")
 
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
