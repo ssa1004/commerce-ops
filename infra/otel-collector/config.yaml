@@ -7,13 +7,74 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
-  batch:
-    send_batch_size: 1024
-    timeout: 5s
+  # 메모리 압박 보호 — tail_sampling 은 의사결정이 끝날 때까지 trace 의 모든 span 을 메모리
+  # 버퍼에 들고 있어야 한다 (head 와 결정적으로 다른 점). 트래픽 폭주 시 OOM 으로 collector
+  # 가 죽으면 *모든* 신호 (trace/metric/log) 가 같이 사라지므로 우선순위 높음.
+  # check_interval/limit/spike 를 잘 두면, GC pressure 가 임계 도달 시 receiver 가
+  # backpressure (RESOURCE_EXHAUSTED) 를 응답해 SDK 쪽 retry buffer 로 흘려보낸다.
   memory_limiter:
     check_interval: 1s
     limit_percentage: 75
     spike_limit_percentage: 25
+
+  # Tail-based sampling — trace 가 *완료* (모든 span 이 도착) 된 뒤에 보낼지/버릴지 결정.
+  #
+  # head-based (1% random) 와의 차이:
+  #   - head: 첫 span 시작 순간에 결정. 단순/저비용. 그러나 normal 1% 만 보면 *문제 trace*
+  #     도 1% 만 잡힌다 → 정작 보고싶은 5xx/slow trace 가 99% 손실.
+  #   - tail: trace 의 *결과* 를 보고 결정. error 와 slow 는 100%, 나머지는 1%. 보존하고 싶은
+  #     trace 의 보존율을 100% 로 끌어올리면서 전체 비용은 ~1.x% 로 유지.
+  #
+  # 운영 표준 (Datadog / NewRelic / Naver Pinpoint / 라인 LINE Trace 등) 이 거의 같은 결합 —
+  # error 보존 + latency 보존 + 잔여 random.
+  #
+  # decision_wait: trace 의 첫 span 이 도착한 시점부터 *얼마나 기다릴지*. 모든 span 이 도착할
+  # 시간을 줘야 의사결정이 정확하다. 너무 짧으면 늦게 오는 child span 이 누락된 채 결정되어
+  # error span 이 빠진 trace 를 보존하는 어처구니없는 일이 생긴다 (head 와 동급으로 망가짐).
+  # 너무 길면 메모리 부담 + 사용자가 trace 를 보기까지 lag.
+  # 우리 시스템의 p99 < ~5s 이고 outbox poller 의 1s 주기를 감안해 10s 로 둔다.
+  #
+  # num_traces: 동시에 들고 있을 수 있는 trace 수의 상한 — trace 수 × decision_wait 동안
+  # 평균 span 수 × span 평균 크기 ≈ collector 메모리 footprint. 데모 환경 50k.
+  #
+  # composite policy: AND 가 아니라 *OR* — 하나라도 매치하면 sample. status_code(ERROR)
+  # 또는 http 5xx 또는 latency(>500ms) 또는 random(1%).
+  tail_sampling:
+    decision_wait: 10s
+    num_traces: 50000
+    expected_new_traces_per_sec: 200
+    policies:
+      # 1) error trace 는 무조건 보존 — span.status.code == ERROR
+      - name: errors
+        type: status_code
+        status_code:
+          status_codes: [ERROR]
+
+      # 2) HTTP 5xx 도 명시적으로 잡는다 (status_code 매핑이 framework 마다 다른 경우 보호).
+      - name: http-5xx
+        type: numeric_attribute
+        numeric_attribute:
+          key: http.response.status_code
+          min_value: 500
+          max_value: 599
+
+      # 3) slow trace — root span duration 이 임계 초과면 보존 (p99 디버깅 목적).
+      #    threshold_ms 는 SLO 의 p99 (500ms) 를 그대로 가져왔다.
+      - name: slow
+        type: latency
+        latency:
+          threshold_ms: 500
+
+      # 4) 나머지는 1% 랜덤. 정상 trace 도 표본으로 분포/베이스라인이 보이도록.
+      - name: baseline-1pct
+        type: probabilistic
+        probabilistic:
+          sampling_percentage: 1
+
+  batch:
+    send_batch_size: 1024
+    timeout: 5s
+
   resource:
     attributes:
       - key: deployment.environment
@@ -43,10 +104,25 @@ exporters:
     verbosity: basic
 
 service:
+  # collector 자체의 health/metric — tail_sampling 의 의사결정 카운트 / drop 수가 핵심.
+  # otelcol_processor_tail_sampling_sampling_decision{policy=...} 등을 Prometheus 가 긁어
+  # 가서 "어느 policy 가 얼마나 잡고 있는지" 대시보드로 볼 수 있다.
+  telemetry:
+    metrics:
+      level: detailed
+      address: 0.0.0.0:8888
+
   pipelines:
+    # traces 파이프라인 순서가 *의미가 있다*:
+    #   memory_limiter → tail_sampling → resource → batch → exporter
+    # - memory_limiter 는 가장 앞 — 다른 processor 가 메모리를 잡기 전에 backpressure.
+    # - tail_sampling 은 batch *앞* — batch 뒤에 두면 batch 가 trace 의 일부 span 만 뭉쳐
+    #   exporter 로 보내버리고 sampling 결정은 그 다음 trace 들에만 적용된다 (의도와 어긋남).
+    # - resource 는 sampling 뒤 — sampling 이 attribute 를 보지 않게 단순화.
+    # - batch 는 항상 마지막 — exporter 로 가는 throughput/latency 최적화.
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, resource, batch]
+      processors: [memory_limiter, tail_sampling, resource, batch]
       exporters: [otlp/tempo]
     metrics:
       receivers: [otlp]

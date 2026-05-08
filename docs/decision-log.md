@@ -102,6 +102,28 @@
 - **대안**: p6spy — 같은 DataSource 단 라이브러리지만 `spy.properties` 파일 + JDBC URL 변경이 필요. datasource-proxy 는 Spring 과 자연스럽게 결합되고 JDBC URL 을 건드리지 않는다.
 - **결과**: 사용자는 의존성만 추가하면 끝. DataSource 구현 (Hikari/Tomcat/etc.) 무관. v0.1 은 슬로우 + N+1 만 측정, v0.2 후보로 OTel span event attach (감지 결과를 trace span 에 이벤트로 첨부해 Tempo 화면에서 바로 보이게) 가 있음 (자세한 설계는 [modules/slow-query-detector/DESIGN.md](../modules/slow-query-detector/DESIGN.md)).
 
+## ADR-014 — Tail-based sampling (OTel Collector)
+
+- **결정**: trace sampling 을 *head* (요청 시작 시 결정) 에서 *tail* (trace 완료 후 결정) 로 전환. OTel Collector 의 `tail_sampling` processor 에 composite policy — `errors → 100%`, `http 5xx → 100%`, `latency > 500ms → 100%`, `random → 1%` — 를 적용.
+- **배경**:
+  - head-based 1% 만 보면 전체 비용은 낮지만 *정작 보고 싶은 error / slow trace* 가 99% 손실된다. p99 디버깅 / 사고 회고가 우연 (sample 에 걸렸을 때만 가능) 에 의존.
+  - 100% 를 보내면 cost / network / 백엔드 (Tempo) 부담이 ~100x. 데모 환경은 견디지만 운영은 곧 깨진다.
+  - tail-based 는 *trace 의 결과* 를 보고 결정 — error / slow 는 100% 로 보존하면서 정상 trace 는 1% 만 들어와 전체 비용은 ~1.x% 에 머문다. 보존하고 싶은 신호의 *recall* 을 100% 로 끌어올린다.
+- **대안**:
+  1. **OTel SDK 측 ParentBased + TraceIdRatioBased(0.01)** — head-based. 간단/저비용, 표본 균일. error 보존이 안 됨 (위 문제 그대로).
+  2. **상시 100% 송신 + 백엔드 (Tempo) 에서 query 시점에만 필터** — 보존은 완벽하지만 비용 그대로. 작은 팀에선 채택 어려움.
+  3. **error 만 100% (latency 없이)** — error 는 잡히지만 *non-error 인데 느린* trace (deadlock, GC, lock contention) 가 누락됨.
+  4. **3계층 (SDK head 1% + collector tail) 조합** — 데이터 손실이 두 단계로 누적. SDK 가 1% 만 보내면 collector 의 tail 결정도 1% 안에서만. 본질적으로 head 와 같음 — 채택 불가.
+- **결과**:
+  - SDK: 100% 송신 (현 OTel starter 기본).
+  - Collector: `tail_sampling` 으로 OR 결합 — error/5xx/slow/random.
+  - `decision_wait: 10s` — root span 시작 후 10s 동안 child span 이 도착할 시간을 준다. 우리 시스템 p99 < 5s 기준으로 안전.
+  - `num_traces: 50000` — 동시 보존 trace 상한. 데모 환경은 충분, 운영은 트래픽 × decision_wait × 평균 span 수를 보고 sizing.
+  - `memory_limiter` 를 파이프라인 *맨 앞* 에 둬서 OOM 으로 collector 가 죽는 사고를 방지. saturation 은 별도 알람 (`tail_sampling_buffer_saturation`) 으로 잡는다.
+  - 운영 표준 (Datadog Continuous Profiler / NewRelic / Naver Pinpoint / 라인 LINE Trace) 이 거의 같은 결합 — error 보존 + latency 보존 + 잔여 random.
+  - **다음 phase 신호**: 단일 collector 가 saturation 에 닿는 순간 = 2계층 (loadbalancing collector → tail_sampling pool) 으로 가야 할 때. tail_sampling 은 *동일 trace 의 모든 span 이 같은 collector* 로 라우팅돼야 동작하므로 trace_id 기반 routing 이 필수.
+  - runbook: [tail-sampling-buffer-saturation](../docs/runbook/tail-sampling-buffer-saturation.md).
+
 ## ADR-013 — 로그에 식별자 노출 정책 (PII 마스킹)
 
 - **결정**:
