@@ -8,6 +8,7 @@ import io.minishop.order.inbox.InventoryInboxRepository;
 import io.minishop.order.kafka.dto.InboundInventoryEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,10 +51,17 @@ public class InventoryEventConsumer {
             return;
         }
 
-        repository.save(InventoryInboxRecord.of(
-                event.reservationId(), event.orderId(), event.productId(),
-                event.type(), event.status(), payload
-        ));
+        try {
+            repository.save(InventoryInboxRecord.of(
+                    event.reservationId(), event.orderId(), event.productId(),
+                    event.type(), event.status(), payload
+            ));
+        } catch (DataIntegrityViolationException dup) {
+            // existsByReservationId() 와 save() 사이의 동시 INSERT race 를 흡수.
+            // PaymentEventConsumer 의 같은 패턴 주석 참고.
+            meterRegistry.counter("inbox.consume", Tags.of("topic", "inventory.events", "outcome", "duplicate")).increment();
+            return;
+        }
         meterRegistry.counter("inbox.consume", Tags.of("topic", "inventory.events", "outcome", "stored")).increment();
         log.debug("Stored inventory.events: type={} order={} reservation={}", event.type(), event.orderId(), event.reservationId());
     }

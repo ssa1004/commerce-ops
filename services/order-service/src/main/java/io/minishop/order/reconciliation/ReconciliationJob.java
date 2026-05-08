@@ -57,12 +57,11 @@ public class ReconciliationJob {
         long inconsistent = 0;
         long checked = 0;
 
-        // 직접 SQL 페이징 (since 조건 + LIMIT) 은 후속에서. 우선 전체 스캔 후 메모리에서 필터링으로 단순하게.
-        var sample = paymentInboxRepository.findAll().stream()
-                .filter(r -> "PaymentSucceeded".equals(r.getEventType()))
-                .filter(r -> r.getReceivedAt().isAfter(since))
-                .limit(props.batchSize())
-                .toList();
+        // DB 단에서 eventType + receivedAt 으로 좁히고 batchSize 만큼만 가져온다 — inbox 가 수십만 행이 돼도
+        // 메모리에 다 올리지 않는다 (예전엔 findAll().stream().filter(...) 였음).
+        var sample = paymentInboxRepository.findByEventTypeAndReceivedAtAfterOrderByReceivedAtAsc(
+                "PaymentSucceeded", since,
+                org.springframework.data.domain.PageRequest.of(0, props.batchSize()));
 
         for (PaymentInboxRecord record : sample) {
             checked++;
