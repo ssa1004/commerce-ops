@@ -1,0 +1,64 @@
+# OTel Collector 2-tier override — `docker-compose.yml` 에 *덧붙여* 사용.
+#
+#   docker compose \
+#     -f infra/docker-compose.yml \
+#     -f infra/docker-compose.collector-2tier.yml \
+#     up -d
+#
+# 효과: 기존 단일 `otel-collector` 컨테이너를 *agent* 역할로 바꾸고, 그 뒤에
+# 2개의 *backend* (otel-backend-1, otel-backend-2) 를 띄운다. 어플리케이션은
+# 그대로 4317/4318 로 보내면 되고 (agent 가 그대로 그 포트를 노출), backend pool
+# 은 내부 네트워크에서만 4317 로 listen.
+#
+# 검증 시나리오:
+#   1) `infra/otel-collector/verify-2tier.sh` 실행 — 100 trace 를 흘려보냄.
+#   2) Tempo 에 도착한 각 trace 의 모든 span 이 *동일한 otel.backend.id* 를 가지는지
+#      확인. 만약 한 trace 의 span 이 두 backend 로 흩어졌다면 routing_key 가
+#      깨진 것 — tail_sampling 의 의사결정도 부정확해짐.
+#
+# 운영 메모: 이 compose 는 *데모 환경* 에 맞춘 정적 구성. 실제 K8s 배포에선
+# `resolver.dns` (headless service 의 endpoint slice 를 watch) 로 동적 멤버십을
+# 사용. backend pool 의 scale-out/scale-in 도 그쪽에선 무중단.
+
+name: mini-shop-observability
+
+services:
+  # 기존 otel-collector 를 *agent* 로 재구성 — config 만 교체.
+  # 이 서비스가 어플리케이션의 OTLP 진입점이라 기존 4317/4318 노출은 유지.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.99.0
+    command: ["--config=/etc/otel/agent.yaml"]
+    volumes:
+      - ./otel-collector/agent.yaml:/etc/otel/agent.yaml:ro
+    depends_on:
+      - otel-backend-1
+      - otel-backend-2
+
+  # backend pool — 같은 image 로 다른 config. 인스턴스마다 OTEL_BACKEND_ID 를
+  # 환경변수로 주입해서 backend.yaml 의 resource processor 가 attribute 로 박는다.
+  # 검증 스크립트가 이 attribute 를 보고 같은 trace 가 같은 backend 로 갔는지 확인.
+  otel-backend-1:
+    image: otel/opentelemetry-collector-contrib:0.99.0
+    command: ["--config=/etc/otel/backend.yaml"]
+    environment:
+      OTEL_BACKEND_ID: backend-1
+    volumes:
+      - ./otel-collector/backend.yaml:/etc/otel/backend.yaml:ro
+    expose:
+      - "4317"
+      - "8888"
+    depends_on:
+      - tempo
+
+  otel-backend-2:
+    image: otel/opentelemetry-collector-contrib:0.99.0
+    command: ["--config=/etc/otel/backend.yaml"]
+    environment:
+      OTEL_BACKEND_ID: backend-2
+    volumes:
+      - ./otel-collector/backend.yaml:/etc/otel/backend.yaml:ro
+    expose:
+      - "4317"
+      - "8888"
+    depends_on:
+      - tempo
