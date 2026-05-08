@@ -2,6 +2,8 @@
 <configuration>
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
 
+    <!-- inventory 는 userId 를 직접 다루지 않는다 (orderId/productId 만 보유) — userId MDC 슬롯 없음.
+         ADR-013 정책: surrogate 키는 평문 허용, 사용자 1:1 자연 키만 마스킹. -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
             <pattern>%d{ISO8601} %-5level [%X{trace_id:-}/%X{span_id:-}] %thread %logger{36} - %msg%n</pattern>
