@@ -12,7 +12,8 @@ public class OrchestrationException extends RuntimeException {
         OUT_OF_STOCK,           // 409 — 재고 부족
         PAYMENT_DECLINED,       // 402 — 결제 거절
         INVENTORY_INFRA,        // 503 — 재고 서비스 장애
-        PAYMENT_INFRA           // 502 — 결제 서비스 장애
+        PAYMENT_INFRA,          // 502 — 결제 서비스 장애
+        UPSTREAM_LIMITED        // 503 — adaptive limiter 가 cascade 차단으로 즉시 거절
     }
 
     private final Outcome outcome;

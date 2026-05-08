@@ -1,5 +1,6 @@
 package io.minishop.order.service;
 
+import io.minishop.order.concurrency.LimitExceededException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -36,6 +37,12 @@ public class PaymentClient {
                             }
                     )
                     .body(PaymentResult.class);
+        } catch (LimitExceededException e) {
+            // adaptive limiter 가 cascade 차단으로 즉시 거절 — payment 가 느려져 우리쪽 한도가
+            // 줄었음. OrderService 가 UPSTREAM_LIMITED outcome 으로 매핑 (보상 호출 후 503).
+            log.warn("payment call rejected by adaptive limiter (limit={}): {}",
+                    e.getCurrentLimit(), e.getMessage());
+            throw e;
         } catch (ResourceAccessException e) {
             log.warn("payment-service unreachable: {}", e.getMessage());
             throw new PaymentInfraException("payment-service unreachable: " + e.getMessage(), e);

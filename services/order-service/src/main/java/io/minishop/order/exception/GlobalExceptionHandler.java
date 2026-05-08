@@ -1,6 +1,7 @@
 package io.minishop.order.exception;
 
 import io.minishop.order.web.dto.OrderResponse;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -27,10 +28,17 @@ public class GlobalExceptionHandler {
             case PAYMENT_DECLINED -> HttpStatus.PAYMENT_REQUIRED; // 402
             case INVENTORY_INFRA -> HttpStatus.SERVICE_UNAVAILABLE; // 503
             case PAYMENT_INFRA -> HttpStatus.BAD_GATEWAY;          // 502
+            case UPSTREAM_LIMITED -> HttpStatus.SERVICE_UNAVAILABLE; // 503 + Retry-After
         };
-        return ResponseEntity.status(status)
-                .header("X-Order-Outcome", e.getOutcome().name())
-                .body(OrderResponse.from(e.getOrder()));
+        ResponseEntity.BodyBuilder b = ResponseEntity.status(status)
+                .header("X-Order-Outcome", e.getOutcome().name());
+        if (e.getOutcome() == OrchestrationException.Outcome.UPSTREAM_LIMITED) {
+            // Retry-After 는 RFC 7231 — 클라이언트가 *다시 시도해도 되는 시점*. adaptive limiter 가
+            // 줄어든 상태에서 즉시 재시도하면 같은 거절을 받으니 1s 가 적절한 기본 (limiter 가
+            // backend 회복을 감지하기까지의 평균 윈도우).
+            b = b.header(HttpHeaders.RETRY_AFTER, "1");
+        }
+        return b.body(OrderResponse.from(e.getOrder()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
