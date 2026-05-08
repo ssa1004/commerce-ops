@@ -55,8 +55,13 @@ public class DistributedLockService {
                 lock.unlock();
             } else {
                 // 작업이 lease (락 보유 시간) 보다 오래 걸려 락이 자동 만료된 상태.
-                // 다른 요청이 끼어들었을 가능성이 있으므로 경고 로그.
+                // 다른 요청이 이미 끼어들었을 가능성이 있으므로 경고 로그 + 카운터.
+                // 이 시점에 동시 진입 자체는 이미 발생한 상태 — 실제 안전망은 Inventory 의 JPA @Version
+                // 낙관적 락 (DB 레벨에서 뒤늦게 커밋하는 쪽이 실패) 이다. 이 카운터는 fence/zombie
+                // 경합이 운영 중 얼마나 발생하는지 추적하는 신호.
                 log.warn("Lock {} was no longer held when releasing — likely lease expired", fullKey);
+                meterRegistry.counter("inventory.lock.lease_expired", Tags.of("key", "product"))
+                        .increment();
             }
         }
     }
