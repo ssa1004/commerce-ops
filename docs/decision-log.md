@@ -64,29 +64,56 @@
 
 ## ADR-009 — Outbox 패턴은 order-service 에만, payment/inventory 는 트랜잭션 커밋 직후 발행
 
-- **결정**: order-service 는 도메인 변경 (Aggregate — DDD 의 일관성 단위, 하나의 트랜잭션으로 같이 바뀌는 객체 묶음) 과 같은 트랜잭션에서 `outbox_events` 행 기록 → 별도 폴러가 Kafka 발행. payment/inventory 는 `TransactionSynchronization.afterCommit()` 훅 (Spring 이 트랜잭션 커밋 직후 실행해주는 콜백) 으로 발행.
-- **배경**: order 의 PAID/FAILED 는 비즈니스 시스템(매출/배송 등) 진실의 단일 원천이라 발행 누락이 치명적. payment/inventory 의 이벤트는 보조 신호(메트릭/알림용)로, 잠깐 누락돼도 도메인 일관성을 깨지 않음.
-- **대안**: 모든 서비스에 outbox → 일관성은 더 좋지만, 폴러·테이블·운영 부담 3배. afterCommit 훅은 "DB 는 바뀌었는데 발행을 못 갔다" 가 가능 — 그 위험을 어디서 받아들일지의 trade-off.
+- **결정**:
+  - order-service: 도메인 변경 (Aggregate — DDD 의 일관성 단위, 하나의 트랜잭션으로 같이 바뀌는 객체 묶음) 과 *같은* 트랜잭션에서 `outbox_events` 행을 INSERT → 별도 폴러가 그 행을 읽어 Kafka 로 발행. DB 와 발행이 한 단위라 *발행 누락 0%*.
+  - payment/inventory: 트랜잭션 커밋 *직후* (Spring 의 `TransactionSynchronization.afterCommit()` 훅 — 트랜잭션이 무사히 커밋된 다음 실행되는 콜백) 에 KafkaTemplate 으로 직접 발행. 커밋과 발행 사이의 짧은 윈도우 동안 프로세스가 죽으면 발행을 놓친다.
+- **배경**: order 의 PAID/FAILED 는 비즈니스 시스템 (매출/배송 등) 의 *진실의 단일 원천* — 누락은 치명적. payment/inventory 의 이벤트는 *보조 신호* (메트릭/알림용) 로, 잠깐 누락돼도 도메인 일관성은 깨지지 않는다.
+- **대안**: 모든 서비스에 outbox → 일관성은 더 좋지만 폴러·테이블·운영 부담이 3배. afterCommit 훅은 "DB 는 바뀌었는데 발행이 못 갔다" 가 가능 — 그 위험을 *어디서 받아들일지* 의 trade-off.
 - **결과**: order 는 100% 보장, payment/inventory 는 best-effort (대부분 가지만 드물게 누락 가능). 추후 Kafka 기반 SAGA 로 흐름이 바뀌면 (Step 3b) 그때 payment/inventory 도 outbox 로 격상 검토.
 
 ## ADR-010 — Kafka 는 idempotent producer + at-least-once consumer
 
-- **결정**: producer 는 `enable.idempotence=true` (재시도로 같은 메시지가 두 번 들어가도 한 번만 저장), `acks=all` (모든 복제본이 받았을 때만 성공). consumer 측 (Step 3b 이후 도입) 멱등성은 inventory 의 `(orderId, productId)` UNIQUE 제약 + payment 의 orderId 키로 흡수.
-- **배경**: Kafka transactions (read-process-write 를 원자적으로 묶는 기능) + 트랜잭션 커밋은 운영 복잡도가 큼. 같은 효과를 도메인 멱등 키 (UNIQUE 제약 같은 자연 키) 로 얻을 수 있다면 그쪽이 단순.
-- **대안**: Kafka transactions — 효과 강력, 하지만 KIP-447 등 운영 노하우 필요.
+- **결정**:
+  - **producer**: `enable.idempotence=true` (브로커 단에서 PID + 시퀀스로 중복을 거름 — 재시도로 같은 메시지가 두 번 들어가도 한 번만 저장), `acks=all` (모든 복제본이 받았을 때만 성공으로 응답).
+  - **consumer 측 멱등성** (Step 3b 이후 도입): inventory 는 `(orderId, productId)` UNIQUE 제약, payment 는 orderId 를 키로 사용 — *도메인 자연 키* 로 같은 메시지의 두 번째 처리를 흡수.
+- **배경**: Kafka transactions (consumer 가 한 메시지를 읽고, 처리하고, 다음 토픽에 쓰는 read-process-write 를 *하나의 원자 단위* 로 묶는 기능) 는 강력하지만 운영 복잡도가 크다 (transactional.id 관리, KIP-447 같은 격리 시맨틱 등). 같은 효과를 *도메인 자연 키 + UNIQUE 제약* 으로 얻을 수 있다면 그쪽이 단순.
+- **대안**: Kafka transactions — 효과 강력, 단 운영 노하우 필요.
 - **결과**: at-least-once (메시지가 최소 한 번은 도착, 가끔 중복). 같은 메시지가 두 번 와도 도메인이 동일 결과를 내도록 설계. Phase 4 카오스 시나리오에서 의도적 중복 메시지로 멱등성 검증 가능.
 
 ## ADR-011 — Inbox 패턴 + reconciliation 잡으로 부정합을 잡는다
 
-- **결정**: order-service 가 `payment.events` / `inventory.events` 를 consume 해서 `payment_inbox` / `inventory_inbox` 에 멱등 (UNIQUE 키) 저장. 별도 스케줄 잡 (정기 실행되는 백그라운드 작업) 이 inbox 와 Order 상태를 비교해 *부정합* (서로 다른 진실을 가진 상태) 을 카운터로 노출.
-- **배경**: [2026-05-07 케이스 스터디](../case-studies/2026-05-07-payment-timeout-race.md) 에서 timeout in-doubt 윈도우 (호출자는 끊겼는데 피호출자는 작업을 끝내버려 결과를 알 수 없는 구간) 때문에 `Order=FAILED, Payment=SUCCESS` 부정합이 났다. 동기 호출의 본질적 함정이라 *발생 자체를 막기* 보다 *발생 사실을 모니터링* 하는 게 현실적.
-- **대안 1 — 자동 보정**: 위험하다. 실제 부정합인지 일시적 경합 (race — 서로 다른 시점의 상태가 비교되는 일시 현상) 인지 즉시 구별이 어렵다. 사람 개입을 위한 신호로 두는 편이 안전.
-- **대안 2 — 받자마자 Order 에 반영 (Step 3c 가 갈 방향)**: 더 깊은 변화. 우선 모니터링 신호부터 두고 본격 비동기 전환은 후속.
-- **결과**: `reconciliation.inconsistency{kind=order_failed_payment_succeeded}` 카운터 노출. 이 값 > 0 일 때 알람을 P1 으로 받기만 하면 즉각 알게 된다. inbox 자체는 도메인 진실이 아니라 *외부 신호의 거울* (다른 서비스가 보낸 이벤트의 사본일 뿐) 이라는 점을 코드 주석에서도 명시.
+- **결정**:
+  1. order-service 가 `payment.events` / `inventory.events` 를 consume 해서 `payment_inbox` / `inventory_inbox` 에 멱등 (UNIQUE 키) 저장.
+  2. 별도 스케줄 잡 (정기 실행되는 백그라운드 작업) 이 inbox 와 Order 상태를 비교해, 서로 다른 진실을 가진 *부정합* 을 카운터로 노출.
+- **배경**: [2026-05-07 케이스 스터디](../case-studies/2026-05-07-payment-timeout-race.md) 에서 in-doubt 윈도우 (호출자는 timeout 으로 끊겼는데 피호출자는 작업을 끝내버려 결과를 알 수 없는 구간) 때문에 `Order=FAILED, Payment=SUCCESS` 부정합이 났다. 이건 동기 호출의 본질적 함정 — *발생 자체를 막기* 보다 *발생 사실을 모니터링* 하는 게 현실적.
+- **대안 1 — 자동 보정**: 위험. 부정합인지, 일시적 경합 (race — 서로 다른 시점의 상태가 비교되는 일시 현상) 인지 즉시 구별이 어렵고, 잘못된 자동 보정은 새 사고를 만든다. 사람 개입용 *신호* 로 두는 편이 안전.
+- **대안 2 — 받자마자 Order 에 반영 (Step 3c 가 갈 방향)**: 더 깊은 변화 (동기 흐름을 비동기로 전환). 우선 모니터링 신호부터 두고, 본격 비동기 전환은 후속.
+- **결과**: `reconciliation.inconsistency{kind=order_failed_payment_succeeded}` 카운터 노출. 이 값이 > 0 이 되면 P1 알람으로 받아 즉시 인지. inbox 자체는 도메인 진실이 아니라 *외부 신호의 거울* (다른 서비스가 보낸 이벤트의 사본) 이라는 점을 코드 주석에도 명시.
 
 ## ADR-012 — slow-query-detector 는 DataSource 단에서 가로챈다
 
 - **결정**: `modules/slow-query-detector` 는 `DataSource` bean 을 datasource-proxy 로 감싸는 BeanPostProcessor (Spring 이 만든 bean 을 후처리하는 훅) 형태로 구현. JPA/JDBC/MyBatis 어느 경로든 같은 자리에서 측정.
-- **배경**: 슬로우 쿼리/N+1 을 잡는 위치는 (a) Hibernate Statistics (Hibernate 가 자체 제공하는 통계), (b) Repository AOP (Spring 의 Repository 메서드를 가로채는 방법), (c) DataSource 프록시 셋 중 하나. Hibernate 한정은 JPA 외 경로 (MyBatis/순수 JDBC) 를 못 잡고, AOP 는 한 메서드 안의 여러 SQL 을 한 덩어리로만 봄. DataSource 는 가장 낮은 층이라 모든 호출 경로를 균일하게 본다.
-- **대안**: p6spy — 둘 다 DataSource 단인데 p6spy 는 `spy.properties` 파일 + JDBC URL 변경이 필요. datasource-proxy 는 Spring 과 자연스럽게 결합되고 JDBC URL 을 안 건드림.
-- **결과**: 사용자는 의존성만 추가하면 끝. DataSource bean 종류(Hikari/Tomcat/etc.) 무관. v0.1 은 슬로우 + N+1 만, v0.2 후보로 OTel span event attach (감지 결과를 trace span 에 첨부해 trace 화면에서 바로 보이게) 가 있음 (자세한 설계는 [modules/slow-query-detector/DESIGN.md](../modules/slow-query-detector/DESIGN.md)).
+- **배경**: 슬로우 쿼리/N+1 을 잡을 수 있는 위치는 셋:
+  1. Hibernate Statistics — Hibernate 가 자체 제공하는 통계. JPA *밖* 경로 (MyBatis, 순수 JDBC) 는 못 잡는다.
+  2. Repository AOP — Spring Repository 메서드 호출을 가로채는 방식. 한 메서드 안의 여러 SQL 을 한 덩어리로만 보여줘 N+1 분석에 부족.
+  3. DataSource 프록시 — 가장 낮은 계층. 어떤 경로로 들어와도 SQL 한 건 단위로 균일하게 보인다.
+
+  3번이 가장 일관성 있어 채택.
+- **대안**: p6spy — 같은 DataSource 단 라이브러리지만 `spy.properties` 파일 + JDBC URL 변경이 필요. datasource-proxy 는 Spring 과 자연스럽게 결합되고 JDBC URL 을 건드리지 않는다.
+- **결과**: 사용자는 의존성만 추가하면 끝. DataSource 구현 (Hikari/Tomcat/etc.) 무관. v0.1 은 슬로우 + N+1 만 측정, v0.2 후보로 OTel span event attach (감지 결과를 trace span 에 이벤트로 첨부해 Tempo 화면에서 바로 보이게) 가 있음 (자세한 설계는 [modules/slow-query-detector/DESIGN.md](../modules/slow-query-detector/DESIGN.md)).
+
+## ADR-013 — 로그에 식별자 노출 정책 (PII 마스킹)
+
+- **결정**:
+  - `userId` 처럼 **한 사람을 1:1 로 식별하는 자연 키** 는 로그 평문 금지. `LogIds.userId(...)` 로 SHA-256 앞 4byte (8 hex) 해시에 `u:` prefix 를 붙여 찍는다 (예: `u:3a4f7b9c`). 같은 user 는 항상 같은 값 → trace 추적은 가능하지만 원본 ID 는 안 보인다.
+  - `orderId` / `paymentId` / `reservationId` / `productId` 같은 **시스템 내부 surrogate 키** (DB 자동증가 ID, 사용자 식별과 무관) 는 평문 허용. 운영 grep 의 1차 식별자라 마스킹하면 디버깅 비용이 너무 커진다.
+  - logback 패턴에 항상 `[%X{trace_id:-}/%X{span_id:-}]` 슬롯 유지 (OTel logback-appender 가 MDC 에 자동 주입).
+  - logback 패턴에 `userId` MDC 슬롯도 함께 두되, *거기 들어가는 값은 반드시 `LogIds.userId(...)` 결과* (평문 userId 를 MDC 에 직접 넣으면 안 됨).
+- **배경**: Phase 2~3 진행 중 `userId` 가 INFO 로그에 평문 노출되는 패턴이 점진적으로 늘어날 위험이 있어, *발생 전에* 정책과 헬퍼를 둔다. orderId 같은 surrogate 까지 마스킹하면 운영 디버깅이 사실상 불가능해지므로 균형을 잡았다.
+- **대안 1 — 모든 ID 마스킹**: 보안은 강해지지만 운영성 손실이 크다.
+- **대안 2 — 정책만 있고 헬퍼는 없음**: 사람마다 다른 방식으로 마스킹하면 같은 사용자가 다른 해시로 찍혀 trace 가 끊어진다.
+- **결과**:
+  - `services/{order,payment}-service/src/main/java/.../util/LogIds.java` 에 헬퍼.
+  - inventory-service 는 `userId` 를 직접 다루지 않으므로 헬퍼 불필요.
+  - logback 패턴에 `[%X{userId:-}]` 슬롯 추가 (order/payment).
+  - 후속 (correlation-mdc-starter 정식 도입 시) 에 `Filter` 가 X-User-Id 헤더를 받아 자동으로 마스킹된 값을 MDC 에 넣도록 통합 예정.

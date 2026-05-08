@@ -46,8 +46,8 @@ public class PaymentEventConsumer {
             return;
         }
 
-        // 멱등성: UNIQUE(payment_id) 제약 덕분에 같은 이벤트가 두 번 와도 한 행만 남음.
-        // (Kafka 는 at-least-once 라 같은 메시지가 가끔 중복 도달함 — 그걸 여기서 흡수)
+        // 멱등성: UNIQUE(payment_id) 제약 덕분에 같은 이벤트가 두 번 와도 한 행만 남는다.
+        // (Kafka 는 at-least-once 라 동일 메시지가 가끔 중복 도달 — 그걸 여기서 흡수)
         if (repository.existsByPaymentId(event.paymentId())) {
             meterRegistry.counter("inbox.consume", Tags.of("topic", "payment.events", "outcome", "duplicate")).increment();
             return;
@@ -59,10 +59,10 @@ public class PaymentEventConsumer {
                     event.status(), event.externalRef(), payload
             ));
         } catch (DataIntegrityViolationException dup) {
-            // 위의 existsByPaymentId() 와 save() 사이에는 (다른 인스턴스/스레드에 의한) 동시
-            // INSERT 가 끼어들 수 있다. UNIQUE 제약이 안전망 역할을 하지만, 예외를 그냥 두면
-            // 트랜잭션 롤백 → Kafka 가 같은 메시지를 무한 재전송 → 컨슈머가 멈춰버린다.
-            // 여기서 흡수하면 "이미 누가 저장했음" 으로 정상 처리한 것과 같은 결과가 된다.
+            // existsByPaymentId() 와 save() 사이에 다른 인스턴스/스레드의 동시 INSERT 가 끼어들 수 있다
+            // (TOCTOU — Time Of Check vs Time Of Use 의 일반적 race). UNIQUE 제약이 *그래도 막아주지만*,
+            // 예외를 그냥 두면 트랜잭션 롤백 → Kafka 가 같은 메시지를 무한 재전송 → 컨슈머가 그 파티션에서
+            // 더 이상 진행 못 하고 멈춘다. 여기서 흡수하면 "이미 누가 저장함" = 정상 처리와 동일 결과.
             meterRegistry.counter("inbox.consume", Tags.of("topic", "payment.events", "outcome", "duplicate")).increment();
             return;
         }
