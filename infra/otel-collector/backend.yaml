@@ -1,0 +1,95 @@
+# 2-tier 의 *backend (뒷단)* — agent 에서 loadbalancing 으로 흘러온 trace 를 받아
+# tail_sampling 을 수행하고 Tempo 로 export 한다.
+#
+# 핵심 전제: agent 의 `routing_key=traceID` 가 *같은 trace 의 모든 span 을 같은
+# backend 인스턴스로* 보내준다. 그래서 이 인스턴스의 tail_sampling buffer 안에는
+# 한 trace 의 span 들이 *완전한 집합* 으로 모이고, error/5xx/latency policy 의
+# OR 결합이 정확하게 동작한다.
+#
+# 만약 routing_key 없이 round-robin 으로 spread 됐다면:
+#   - 한 인스턴스의 buffer: trace_X 의 root span + 1번 child
+#   - 다른 인스턴스의 buffer: trace_X 의 ERROR child
+# 양쪽 다 자기 buffer 만 보고 의사결정 — 한쪽은 ERROR 못 봐서 drop, 다른 쪽은
+# root 못 봐서 latency 측정 불가. 결과적으로 *모든 trace 의 보존율이 망가짐*.
+#
+# memory/buffer 측면: 인스턴스 N 개로 늘리면 한 인스턴스가 들고 있어야 할 trace 수가
+# ~1/N 로 줄어든다 (consistent hashing 분포가 균일하다고 가정). 즉 단일 collector
+# OOM 위험을 N 배까지 늘릴 수 있는 게 2-tier 의 정량적 이득.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 75
+    spike_limit_percentage: 25
+
+  # tail_sampling — 단일 collector 시절과 동일한 policy. 차이는 *어디서 동작하느냐* 만.
+  # 같은 trace 가 같은 backend 인스턴스로만 오므로 policy 의사결정은 정확.
+  tail_sampling:
+    decision_wait: 10s
+    num_traces: 50000
+    expected_new_traces_per_sec: 200
+    policies:
+      - name: errors
+        type: status_code
+        status_code:
+          status_codes: [ERROR]
+      - name: http-5xx
+        type: numeric_attribute
+        numeric_attribute:
+          key: http.response.status_code
+          min_value: 500
+          max_value: 599
+      - name: slow
+        type: latency
+        latency:
+          threshold_ms: 500
+      - name: baseline-1pct
+        type: probabilistic
+        probabilistic:
+          sampling_percentage: 1
+
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: dev
+        action: upsert
+      # backend 인스턴스 ID 를 attribute 로 — 검증 스크립트가 *같은 traceID 의 모든
+      # span 이 같은 backend 로 갔는지* 를 export 단에서 확인할 수 있게.
+      # 환경변수 OTEL_BACKEND_ID 를 compose 에서 인스턴스마다 다르게 주입.
+      - key: otel.backend.id
+        value: ${env:OTEL_BACKEND_ID}
+        action: upsert
+
+  batch:
+    send_batch_size: 1024
+    timeout: 5s
+
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  debug:
+    verbosity: basic
+
+service:
+  telemetry:
+    metrics:
+      level: detailed
+      address: 0.0.0.0:8888
+
+  pipelines:
+    # trace only — 메트릭/로그는 agent 가 직접 처리.
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, tail_sampling, resource, batch]
+      exporters: [otlp/tempo]
