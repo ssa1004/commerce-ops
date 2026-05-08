@@ -46,6 +46,9 @@ Phase 3 Step 3 — tail-based sampling 적용 후 추가:
 Phase 3 Step 4 — JFR continuous profiling 적용 후 추가:
 - [jfr-analysis](jfr-analysis.md) — runbook 이 아닌 *운영자 가이드* — JFR chunk 를 어떻게 가져오고 (JMC / async-profiler / programmatic) 어떻게 분석하는지
 
+Phase 3 Step 5 — adaptive concurrency limiter 적용 후 추가:
+- [client-concurrency-limit-saturated](client-concurrency-limit-saturated.md) — order-service 의 client adaptive limiter 가 minLimit 근처까지 좁혀짐 (backend 가 느려져 cascade 차단 작동 중)
+
 ## 다음에 추가할 후보
 
 - payment 응답시간 p99 high (mock-pg 의존)

@@ -3,6 +3,7 @@ package io.minishop.order.service;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tags;
 import io.micrometer.core.instrument.Timer;
+import io.minishop.order.concurrency.LimitExceededException;
 import io.minishop.order.domain.Order;
 import io.minishop.order.domain.OrderItem;
 import io.minishop.order.exception.OrchestrationException;
@@ -111,6 +112,15 @@ public class OrderService {
             markFailed(order.getId(), "PAYMENT_INFRA: " + e.getMessage());
             recordOutcome(sample, "payment_infra");
             throw new OrchestrationException(Outcome.PAYMENT_INFRA, reload(order.getId()), e.getMessage());
+
+        } catch (LimitExceededException e) {
+            // adaptive limiter 가 inventory / payment 호출을 즉시 거절 — backend cascade 차단.
+            // 우리는 *호출 자체를 안 한* 상태이므로 보상은 reserved 까지만 (이미 잡힌 재고 release).
+            compensate(order.getId(), reserved);
+            markFailed(order.getId(), "UPSTREAM_LIMITED[" + e.getUpstream() + "]: " + e.getMessage());
+            recordOutcome(sample, "upstream_limited");
+            throw new OrchestrationException(Outcome.UPSTREAM_LIMITED, reload(order.getId()),
+                    "upstream limited: " + e.getUpstream());
         }
     }
 

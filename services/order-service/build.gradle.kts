@@ -38,8 +38,15 @@ dependencies {
 
 	implementation("org.springframework.kafka:spring-kafka")
 
-	// 자체 운영 라이브러리 (modules/slow-query-detector를 composite build로 참조)
+	// 자체 운영 라이브러리 (modules/* 를 composite build로 참조)
 	implementation("io.minishop:slow-query-detector")
+	implementation("io.minishop:jfr-recorder-starter")
+
+	// Netflix concurrency-limits — adaptive concurrency limiter (Gradient2 알고리즘 — TCP Vegas
+	// 로부터 영감, latency 측정 기반으로 동시 진행 중 요청 수를 자동 조절). 외부 호출에서
+	// cascade (한 곳의 지연이 호출자 → 호출자 → ... 로 번져가는 도미노) 를 차단.
+	// Resilience4j 의 Bulkhead 는 *고정* — 적응형이 아님. 그래서 별도 라이브러리.
+	implementation("com.netflix.concurrency-limits:concurrency-limits-core:0.5.3")
 
 	runtimeOnly("org.postgresql:postgresql")
 

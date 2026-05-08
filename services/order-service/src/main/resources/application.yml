@@ -40,7 +40,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health, info, prometheus, metrics
+        include: health, info, prometheus, metrics, jfr
   endpoint:
     health:
       probes:
@@ -100,5 +100,21 @@ mini-shop:
     interval-ms: ${RECONCILIATION_INTERVAL_MS:60000}
     lookback-minutes: ${RECONCILIATION_LOOKBACK_MIN:30}
     batch-size: ${RECONCILIATION_BATCH_SIZE:200}
+  # adaptive concurrency limiter — payment / inventory 호출에 적용. backend 가 느려지면
+  # latency 측정 (Gradient2 — TCP Vegas 영감) 으로 동시 진행 한도를 자동 축소해 cascade 차단.
+  # 한도 초과 시 LimitExceededException → 503 + Retry-After 1s.
+  concurrency:
+    enabled: ${CLIENT_CONCURRENCY_ENABLED:true}
+    initial-limit: ${CLIENT_CONCURRENCY_INITIAL:20}
+    min-limit: ${CLIENT_CONCURRENCY_MIN:1}
+    max-limit: ${CLIENT_CONCURRENCY_MAX:100}
+  # JFR continuous profiling — 사고 발생 후 *그 시점* 의 프로파일을 분석하기 위해 24/7 켜둔다.
+  jfr:
+    enabled: ${JFR_ENABLED:true}
+    rollover: ${JFR_ROLLOVER:5m}
+    max-retained: ${JFR_MAX_RETAINED:24}
+    dump-directory: ${JFR_DUMP_DIR:/tmp/jfr}
+    settings: ${JFR_SETTINGS:default}
+    mask-sensitive-events: ${JFR_MASK_SENSITIVE:false}
 
 # 로그 패턴/appender는 src/main/resources/logback-spring.xml에서 정의.

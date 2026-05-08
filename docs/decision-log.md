@@ -102,6 +102,31 @@
 - **대안**: p6spy — 같은 DataSource 단 라이브러리지만 `spy.properties` 파일 + JDBC URL 변경이 필요. datasource-proxy 는 Spring 과 자연스럽게 결합되고 JDBC URL 을 건드리지 않는다.
 - **결과**: 사용자는 의존성만 추가하면 끝. DataSource 구현 (Hikari/Tomcat/etc.) 무관. v0.1 은 슬로우 + N+1 만 측정, v0.2 후보로 OTel span event attach (감지 결과를 trace span 에 이벤트로 첨부해 Tempo 화면에서 바로 보이게) 가 있음 (자세한 설계는 [modules/slow-query-detector/DESIGN.md](../modules/slow-query-detector/DESIGN.md)).
 
+## ADR-016 — Adaptive concurrency limiter (Netflix concurrency-limits, Gradient2)
+
+- **결정**: order-service 의 외부 호출 (`InventoryClient`, `PaymentClient`) 에 Netflix concurrency-limits 의 `Gradient2Limit` 기반 adaptive limiter 를 적용. RestClient `ClientHttpRequestInterceptor` 위치에 끼워 매 호출에 acquire/release. queueSize=0 — 한도 초과 시 즉시 `LimitExceededException` (503 + Retry-After 1s).
+- **배경**:
+  - 현재 client 에는 *고정 timeout* 만 있다. backend (payment/inventory) 가 느려지면 호출자 (order) 의 thread / connection 이 timeout 만큼 점유되고, 새 요청은 그 뒤에 줄을 선다. 이게 *cascade* — 한 곳의 지연이 호출자 → 호출자 → ... 도미노로 번짐. 사고 회고 [2026-05-07-payment-timeout-race](../case-studies/2026-05-07-payment-timeout-race.md) 의 in-doubt 윈도우와 같은 부류.
+  - 대비책으로 *고정 동시 실행 한도* (Resilience4j Bulkhead) 도 있지만, *내가 정한 한도* 가 backend 의 *지금 처리 능력* 과 일치한다는 보장이 없다. backend 가 평소의 절반 능력으로 떨어졌을 때도 같은 N 명이 들어가면 cascade 가 그대로.
+  - adaptive 는 *backend 의 latency 응답* 으로 한도를 자동 조절. RTT 가 길어지면 한도 즉시 축소 (multiplicative decrease) — backend 가 회복되면 latency 가 정상화되고 한도도 자동 증가. 사람이 손대지 않아도 됨.
+  - 운영 표준 — Netflix / AWS / 카카오 / 라인 backend mesh 가 같은 부류 (Netflix concurrency-limits, AWS App Mesh adaptive concurrency 등).
+- **대안**:
+  1. **고정 Bulkhead (Resilience4j)** — 정적 한도. 위에 적은 한계 — backend 능력 변동에 대응 못 함.
+  2. **circuit breaker 만** — backend 가 *완전 장애* 일 때만 차단. *부분 장애 (느려짐)* 에 약함.
+  3. **자체 구현** — Gradient2 / Vegas / TCP-style 알고리즘은 디테일이 까다로움. 검증된 라이브러리 가져오는 편이 안전.
+  4. **client-side rate limit (RPS)** — 고정값. 트래픽이 자연 변동하면 *충분한데도* 거절하거나 *못 따라가는데도* 그대로 보냄.
+- **결과**:
+  - **알고리즘** — Gradient2 (TCP Vegas 로부터 영감): long-term RTT 평균과 short-term RTT 평균의 비율 (gradient) 로 limit 조절. gradient ≈ 1 이면 limit 천천히 증가 (probe), gradient < 1 이면 limit 즉시 축소.
+  - **acquire 위치** — RestClient interceptor (connect/read timeout 과 같은 layer). 호출 메서드 단위가 아니라 *upstream service 단위* 로 한도 격리 (`payment` vs `inventory` 분리).
+  - **5xx → onDropped** — backend 가 망가지고 있다는 신호. limit 더 공격적으로 축소.
+  - **4xx → onSuccess** — 비즈니스 결과 (404/409/402). backend 부담과 무관.
+  - **queueSize=0** — 한도 초과 시 즉시 거절. 줄에 끼면 cascade 가 *호출자에서* 다시 발생.
+  - **Retry-After: 1s** — RFC 7231. 짧으면 클라이언트가 같은 거절 만남, 길면 backend 회복 후 늦게 돌아옴. 1s 가 균형점.
+  - **메트릭** — `client.concurrency.limit{upstream=payment|inventory}`, `client.concurrency.in_flight{...}` gauge.
+  - **enabled=false 토글** — 도입 직후 운영 사고 시 기존 (timeout 만) 동작으로 즉시 롤백 가능.
+  - **다음 phase 신호**: 한 호출 그래프에 limiter 가 여러 단 쌓이면 (order → payment → external PG) backpressure 가 *위로* 전파되어야 — Reactive (Project Reactor / RxJava) 의 backpressure 와 결합 검토. 본 phase 는 단일 layer.
+  - runbook: [client-concurrency-limit-saturated](../docs/runbook/client-concurrency-limit-saturated.md).
+
 ## ADR-015 — JFR continuous profiling 을 항상 켜둔다
 
 - **결정**: `modules/jfr-recorder-starter` 를 만들고, 의존성을 추가하면 부팅 시 JFR (Java Flight Recorder — JDK 표준 저오버헤드 프로파일러) 을 *상시* 켠다. `rollover` (기본 5분) 주기마다 chunk 를 디스크에 떨구고 `maxRetained` (기본 24개 = 2시간) 만큼 보존. 운영자는 `/actuator/jfr/{tag}` 로 즉시 ad-hoc dump trigger 가능.
