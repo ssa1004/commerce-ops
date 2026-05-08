@@ -69,6 +69,7 @@ services:
     ports:
       - "4317:4317"   # OTLP gRPC
       - "4318:4318"   # OTLP HTTP
+      - "8888:8888"   # collector self-metrics (tail_sampling policy decisions 등)
     depends_on:
       - prometheus
       - loki

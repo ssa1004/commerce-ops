@@ -107,3 +107,47 @@ groups:
             slow-query-detector 모듈이 같은 정규화 SQL이 임계 횟수 반복되는 패턴을 감지함.
             로그에서 "Suspected N+1 (...)" 메시지의 stack trace로 어느 호출자가 만들었는지 식별 → @EntityGraph / fetch join으로 수정.
           runbook_url: https://github.com/ssa1004/mini-shop-observability/blob/main/docs/runbook/n-plus-one-detected.md
+
+  - name: mini-shop.client-resilience
+    interval: 30s
+    rules:
+      - alert: client_concurrency_limit_saturated
+        expr: |
+          (
+            sum by (application, upstream)
+              (rate(order_orchestration_seconds_count{outcome="upstream_limited"}[5m]))
+            /
+            clamp_min(
+              sum by (application, upstream)
+                (rate(order_orchestration_seconds_count[5m])), 0.001)
+          ) > 0.05
+        for: 3m
+        labels:
+          severity: P2
+          service: order-service
+        annotations:
+          summary: "{{ $labels.application }} adaptive limiter 가 5% 이상의 요청을 거절 (upstream={{ $labels.upstream }})"
+          description: |
+            adaptive concurrency limiter (Gradient2) 가 backend 의 응답 지연을 감지해 호출을 즉시
+            거절 중 (outcome=upstream_limited). cascade 차단의 *정상 동작* 이지만, 5% 이상이면
+            backend 의 능력 자체에 문제가 있다는 신호 — payment/inventory 응답시간, hikari 포화,
+            GC pause 와 함께 봐야 함.
+          runbook_url: https://github.com/ssa1004/mini-shop-observability/blob/main/docs/runbook/client-concurrency-limit-saturated.md
+
+  - name: mini-shop.observability-pipeline
+    interval: 30s
+    rules:
+      - alert: tail_sampling_buffer_saturation
+        expr: |
+          sum(rate(otelcol_processor_refused_spans{processor="tail_sampling"}[5m])) > 0
+        for: 3m
+        labels:
+          severity: P2
+          component: otel-collector
+        annotations:
+          summary: "OTel Collector tail_sampling buffer 가 saturate — trace 가 의사결정 전에 drop 됨"
+          description: |
+            tail_sampling 의 num_traces 한도에 닿거나 memory_limiter 가 발동해 span 이 거부되고 있음.
+            error / slow trace 의 보존율 100% 가 깨질 위험 — 가장 보고 싶은 trace 가 누락된다.
+            대시보드에서 policy 별 sampled 비율, expected_new_traces_per_sec 대비 실제 유입을 먼저 확인.
+          runbook_url: https://github.com/ssa1004/mini-shop-observability/blob/main/docs/runbook/tail-sampling-buffer-saturation.md

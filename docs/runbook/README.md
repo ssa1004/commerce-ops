@@ -40,6 +40,9 @@ Phase 2 Step 2 — 5개:
 Phase 3 Step 2 — slow-query-detector 적용 후 추가:
 - [n-plus-one-detected](n-plus-one-detected.md) — N+1 패턴 (1번의 마스터 조회 + N번의 자식 조회) 감지 (`n_plus_one_total > 0`)
 
+Phase 3 Step 3 — tail-based sampling 적용 후 추가:
+- [tail-sampling-buffer-saturation](tail-sampling-buffer-saturation.md) — OTel Collector tail_sampling 버퍼가 한도에 닿아 trace 가 의사결정 전에 drop 됨
+
 ## 다음에 추가할 후보
 
 - payment 응답시간 p99 high (mock-pg 의존)

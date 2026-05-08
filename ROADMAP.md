@@ -123,7 +123,13 @@
 - [x] Grafana "Slow Query & N+1" 대시보드 자동 프로비저닝 (5개 패널)
 - [x] 알람 룰: `n_plus_one_detected` (P2) + [런북](docs/runbook/n-plus-one-detected.md)
 
-### Step 3 — correlation-mdc-starter
+### Step 3 — Tail-based sampling (OTel Collector) ✅
+- [x] OTel Collector config 에 `tail_sampling` processor 추가 — composite policy: error / 5xx / latency > 500ms / random 1% (ADR-014)
+- [x] `decision_wait: 10s`, `num_traces: 50000` — trace 완료 후 결정. memory_limiter 를 파이프라인 맨 앞에 둬 OOM 방지
+- [x] Collector self-metrics (`:8888`) Prometheus 스크레이프 — policy 별 sampled 비율, refused_spans 노출
+- [x] 알람: `tail_sampling_buffer_saturation` (P2) + [런북](docs/runbook/tail-sampling-buffer-saturation.md)
+
+### Step 6 — correlation-mdc-starter
 - [ ] OTel trace_id 가 이미 MDC (Mapped Diagnostic Context — SLF4J/Logback 의 thread-local 키밸류 저장소, 로그 패턴에서 `%X{key}` 로 출력 가능) 에 들어가는 부분은 그대로 활용
 - [ ] 추가: HTTP 헤더(X-User-Id, X-Request-Id 등)에서 비즈니스 식별자를 MDC 로 주입 (로그/트레이스에 사용자 ID 까지 같이 보이도록)
 - [ ] Kafka consumer 에서도 동일하게 (현재 trace 컨텍스트 외에 추가 attribute)
