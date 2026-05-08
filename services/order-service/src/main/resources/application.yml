@@ -94,6 +94,7 @@ mini-shop:
       interval-ms: ${OUTBOX_POLLER_INTERVAL_MS:1000}
       batch-size: ${OUTBOX_POLLER_BATCH_SIZE:100}
       max-attempts: ${OUTBOX_POLLER_MAX_ATTEMPTS:5}
+      send-timeout-ms: ${OUTBOX_POLLER_SEND_TIMEOUT_MS:5000}
   reconciliation:
     enabled: ${RECONCILIATION_ENABLED:true}
     interval-ms: ${RECONCILIATION_INTERVAL_MS:60000}
