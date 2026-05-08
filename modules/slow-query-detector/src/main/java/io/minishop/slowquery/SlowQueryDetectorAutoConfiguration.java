@@ -19,8 +19,19 @@ import javax.sql.DataSource;
  *  - DataSource bean 이 있어야 함 (감쌀 대상이 있어야 의미가 있음)
  *  - net.ttddyy.dsproxy 클래스가 클래스패스에 있어야 함 (모듈의 api 의존성으로 들어옴)
  *  - MeterRegistry bean 이 있어야 함 (Spring Boot Actuator + Micrometer 가 셋업되어 있어야 함)
+ *
+ * 순서 주의: {@code @ConditionalOnBean} 은 후보 bean 이 이미 등록된 다음에만 정확히 평가된다.
+ * MeterRegistry 는 actuator 의 MetricsAutoConfiguration 이 만들기 때문에, 그 클래스가
+ * 클래스패스에 있을 때 그 뒤로 자동 정렬되어야 한다. 클래스 직접 참조는 actuator 의존성을 강제하므로
+ * 문자열 이름으로 참조해 선택적 의존성으로 둔다.
  */
-@AutoConfiguration(after = DataSourceAutoConfiguration.class)
+@AutoConfiguration(
+        after = DataSourceAutoConfiguration.class,
+        afterName = {
+                "org.springframework.boot.actuate.autoconfigure.metrics.MetricsAutoConfiguration",
+                "org.springframework.boot.actuate.autoconfigure.metrics.export.simple.SimpleMetricsExportAutoConfiguration"
+        }
+)
 @ConditionalOnClass(name = {
         "net.ttddyy.dsproxy.support.ProxyDataSource",
         "io.micrometer.core.instrument.MeterRegistry"
