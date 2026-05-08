@@ -5,6 +5,7 @@
 | Module | 한 줄 설명 |
 |---|---|
 | [slow-query-detector](slow-query-detector/) | JPA/JDBC 슬로우·N+1 (한 번 작업에서 같은 모양의 쿼리가 N 번 반복되는 안티패턴) 쿼리를 자동 감지해 메트릭/로그/Trace event 로 노출 |
+| [jfr-recorder-starter](jfr-recorder-starter/) | JFR (Java Flight Recorder — JDK 표준 저오버헤드 프로파일러) always-on continuous profiling — rolling chunk + actuator dump endpoint |
 | [correlation-mdc-starter](correlation-mdc-starter/) | OTel Trace ID ↔ MDC (SLF4J/Logback 의 thread-local 키밸류 — 로그 패턴에 출력 가능) 자동 동기화. 로그·트레이스·메트릭 상관관계 |
 | [actuator-extras](actuator-extras/) | HikariCP (DB 커넥션 풀), 스레드풀, 트랜잭션 통계 커스텀 endpoint |
 | [chaos-injector](chaos-injector/) | 메서드 단위로 지연/실패를 일부러 주입 (테스트·데모용) |

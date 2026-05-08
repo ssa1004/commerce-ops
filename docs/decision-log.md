@@ -102,6 +102,26 @@
 - **대안**: p6spy — 같은 DataSource 단 라이브러리지만 `spy.properties` 파일 + JDBC URL 변경이 필요. datasource-proxy 는 Spring 과 자연스럽게 결합되고 JDBC URL 을 건드리지 않는다.
 - **결과**: 사용자는 의존성만 추가하면 끝. DataSource 구현 (Hikari/Tomcat/etc.) 무관. v0.1 은 슬로우 + N+1 만 측정, v0.2 후보로 OTel span event attach (감지 결과를 trace span 에 이벤트로 첨부해 Tempo 화면에서 바로 보이게) 가 있음 (자세한 설계는 [modules/slow-query-detector/DESIGN.md](../modules/slow-query-detector/DESIGN.md)).
 
+## ADR-015 — JFR continuous profiling 을 항상 켜둔다
+
+- **결정**: `modules/jfr-recorder-starter` 를 만들고, 의존성을 추가하면 부팅 시 JFR (Java Flight Recorder — JDK 표준 저오버헤드 프로파일러) 을 *상시* 켠다. `rollover` (기본 5분) 주기마다 chunk 를 디스크에 떨구고 `maxRetained` (기본 24개 = 2시간) 만큼 보존. 운영자는 `/actuator/jfr/{tag}` 로 즉시 ad-hoc dump trigger 가능.
+- **배경**:
+  - 사고 회고에서 가장 답답한 순간이 "p99 가 튀었는데 *그 시점 무슨 메서드가 CPU 를 먹고 있었는지* 알 수 없다" 는 것. 그때 가서 켜는 방식 (async-profiler 를 이상 발생 후 attach) 은 *놓친 사고 윈도우* 를 재현할 때까지 기다려야 함.
+  - 운영 표준 (Datadog Continuous Profiler / NHN APM / 라인 LINE Profiler) 은 *상시 켠 채* chunk 단위로 보존. JFR 의 default 설정 오버헤드는 ~1% 라 상시 운영에 부담이 적다.
+  - 메트릭/로그/trace 만으로는 *런타임 내부* (allocation 패턴, lock contention, JIT, GC) 가 보이지 않는다 — 옵저버빌리티의 4번째 신호 = profile.
+- **대안**:
+  1. **async-profiler agent (`-agentpath`) 상시 부착** — 더 정밀 (특히 wall-clock, allocation), 그러나 native 라이브러리 배포 부담. 컨테이너 이미지에 별도 layer.
+  2. **알람 발화 시 사람이 attach** — 운영 부담 + 윈도우 놓침. 위에 적은 핵심 동기와 어긋남.
+  3. **OTel profile signal (alpha)** — 표준화 진행 중이지만 도구 ecosystem (JMC / async-profiler view) 이 아직 file 기반. 시기상조.
+- **결과**:
+  - 상시 켠 채 5분마다 rollover, 2시간 분량 보존. 사고 발생 후 평균 30분 ~ 1시간 안에 분석을 시작한다는 SRE 경험치의 2배 버퍼.
+  - PII 보호: `mask-sensitive-events=true` 로 `jdk.SocketRead/Write`, `jdk.FileRead/Write` 를 *발생 시점* 에 disable (post-hoc 마스킹과 다름 — 데이터가 아예 안 들어감).
+  - actuator endpoint 는 exposure 미허용 시 bean 자체가 등록되지 않음 (`@ConditionalOnAvailableEndpoint`) — 권한 가드 1차 방어.
+  - Java 21 toolchain 강제 — JFR 은 11+ 이지만 다른 모듈과 일관성.
+  - JFR 자체가 비활성인 환경 (일부 GraalVM, 일부 컨테이너) 에선 `JfrRecorder.start()` 가 *예외를 throw 하지 않고* 메트릭 + WARN 로그로만 알림 → 사용자 앱 부팅이 깨지지 않음.
+  - 운영 가이드: [docs/runbook/jfr-analysis.md](../docs/runbook/jfr-analysis.md) — JMC / async-profiler / programmatic 분석 흐름.
+  - **다음 phase 신호**: 사고 → JFR 분석 흐름이 자리잡고 나면, (a) chunk S3 자동 업로드 + retention extend, (b) OTLP profile signal stable 화 시 그쪽 exporter 전환, (c) async-profiler agent 로 격상 (정밀도 더 필요할 때) — 이 셋이 후보.
+
 ## ADR-014 — Tail-based sampling (OTel Collector)
 
 - **결정**: trace sampling 을 *head* (요청 시작 시 결정) 에서 *tail* (trace 완료 후 결정) 로 전환. OTel Collector 의 `tail_sampling` processor 에 composite policy — `errors → 100%`, `http 5xx → 100%`, `latency > 500ms → 100%`, `random → 1%` — 를 적용.
