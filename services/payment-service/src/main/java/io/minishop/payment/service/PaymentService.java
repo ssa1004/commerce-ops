@@ -50,6 +50,9 @@ public class PaymentService {
         // 트랜잭션 커밋 직후에만 publish — DB 에 안 남은 결제가 이벤트로만 새어나가는 것을 방지.
         // 단, 커밋 후 publish 직전에 프로세스가 죽으면 "DB 는 SUCCESS 인데 이벤트는 못 갔다" 가 가능.
         // 이 위험을 줄이려면 Outbox 패턴으로 격상해야 하는데 (ADR-009 참고), Phase 3 까지의 절충안이다.
+        // TODO(phase-3-step-3a): outbox 자리 (V2__create_outbox.sql + io.minishop.payment.outbox.*) 는
+        //   준비되어 있음. 이 호출을 같은 트랜잭션 안에서 outboxRepository.save(OutboxEvent.pending(...)) 로
+        //   바꾸고 order-service 와 동일 패턴의 폴러를 띄우면 격상 완료. (격상 계획은 outbox 패키지 javadoc 참고)
         Payment finalPayment = payment;
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
