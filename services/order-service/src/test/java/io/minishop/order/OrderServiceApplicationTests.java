@@ -23,7 +23,10 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.List;
+
+import static org.awaitility.Awaitility.await;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -163,10 +166,19 @@ class OrderServiceApplicationTests {
 						List.of(new CreateOrderItemRequest(1001L, 1, new BigDecimal("9990.00")))),
 				OrderResponse.class);
 
-		ResponseEntity<String> metrics = http.getForEntity("/actuator/prometheus", String.class);
-		assertThat(metrics.getStatusCode()).isEqualTo(HttpStatus.OK);
-		assertThat(metrics.getBody()).contains("jvm_memory_used_bytes");
-		assertThat(metrics.getBody()).contains("http_server_requests_seconds");
-		assertThat(metrics.getBody()).contains("order_orchestration_seconds");
+		// Spring Boot 3.5 + Micrometer 1.14 환경에서 JvmMetricsAutoConfiguration 의 MeterBinder
+		// (예: jvm_memory_used_bytes) 들은 ApplicationStartedEvent 직후에 등록된다. SpringBootTest
+		// RANDOM_PORT 부팅 직후 첫 /actuator/prometheus 스크레이프가 그 등록보다 먼저 실행되면
+		// 본문에 JVM 메트릭이 누락되어 어셈션이 실패하는 경합이 있었다. 폴링으로 안정화.
+		await().atMost(Duration.ofSeconds(5))
+				.pollInterval(Duration.ofMillis(100))
+				.untilAsserted(() -> {
+					ResponseEntity<String> metrics = http.getForEntity("/actuator/prometheus", String.class);
+					assertThat(metrics.getStatusCode()).isEqualTo(HttpStatus.OK);
+					assertThat(metrics.getBody())
+							.contains("jvm_memory_used_bytes")
+							.contains("http_server_requests_seconds")
+							.contains("order_orchestration_seconds");
+				});
 	}
 }
