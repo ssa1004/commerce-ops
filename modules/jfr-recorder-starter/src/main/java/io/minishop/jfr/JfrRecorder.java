@@ -2,6 +2,8 @@ package io.minishop.jfr;
 
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.minishop.jfr.upload.JfrChunkUploader;
+import io.minishop.jfr.upload.NoopJfrChunkUploader;
 import jdk.jfr.Configuration;
 import jdk.jfr.FlightRecorder;
 import jdk.jfr.Recording;
@@ -20,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -74,17 +77,45 @@ public class JfrRecorder {
 
     private final JfrRecorderProperties props;
     private final MeterRegistry meterRegistry;
+    private final JfrChunkUploader uploader;
     private final ScheduledExecutorService scheduler;
+    /**
+     * 업로드 전용 executor — 별도 스레드. 이유:
+     *   1) JFR rollover 가 *block 되면 안 됨* — 다음 chunk 의 시작이 늦어진다.
+     *   2) 업로드는 네트워크 I/O 라 RTT 가 크고 retry 가 들어갈 수 있음.
+     *   3) 직렬 single-thread — 동시에 여러 업로드가 같은 컨테이너 NIC 를 점유하지 않게.
+     *      (chunk 는 5분마다 1개라 직렬로도 충분.)
+     */
+    private final ExecutorService uploadExecutor;
+    private final boolean uploadAdHocDumps;
     private final AtomicReference<Recording> current = new AtomicReference<>();
     private volatile ScheduledFuture<?> rolloverTask;
     private volatile boolean started = false;
     private volatile Instant startedAt;
 
     public JfrRecorder(JfrRecorderProperties props, MeterRegistry meterRegistry) {
+        this(props, meterRegistry, new NoopJfrChunkUploader());
+    }
+
+    public JfrRecorder(JfrRecorderProperties props, MeterRegistry meterRegistry, JfrChunkUploader uploader) {
+        this(props, meterRegistry, uploader, false);
+    }
+
+    public JfrRecorder(JfrRecorderProperties props,
+                       MeterRegistry meterRegistry,
+                       JfrChunkUploader uploader,
+                       boolean uploadAdHocDumps) {
         this.props = props;
         this.meterRegistry = meterRegistry;
+        this.uploader = uploader == null ? new NoopJfrChunkUploader() : uploader;
+        this.uploadAdHocDumps = uploadAdHocDumps;
         this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "jfr-rollover");
+            t.setDaemon(true);
+            return t;
+        });
+        this.uploadExecutor = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "jfr-uploader");
             t.setDaemon(true);
             return t;
         });
@@ -132,6 +163,17 @@ public class JfrRecorder {
         started = false;
         if (rolloverTask != null) rolloverTask.cancel(true);
         scheduler.shutdownNow();
+        // 업로드 큐는 *graceful* 로 비워준다 — 마지막 chunk 가 아직 안 올라간 채 종료되면
+        // 그게 가장 가치 있는 데이터일 가능성이 높다 (사고 시점). awaitTermination 수 초.
+        uploadExecutor.shutdown();
+        try {
+            if (!uploadExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
+                uploadExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            uploadExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
         Recording r = current.getAndSet(null);
         if (r != null) {
             try {
@@ -157,11 +199,26 @@ public class JfrRecorder {
         try {
             r.dump(file);
             log.info("JFR ad-hoc dump written: {}", file);
+            // ad-hoc dump 는 보통 즉시 분석 용도라 upload 가 기본 disable. 운영자가 cross-pod
+            // 또는 보존 의도가 있으면 upload-ad-hoc-dumps 를 켜둔다.
+            if (uploadAdHocDumps && !(uploader instanceof NoopJfrChunkUploader)) {
+                scheduleUpload(file);
+            }
             return file;
         } catch (IOException e) {
             log.warn("JFR dump failed for tag={}: {}", tag, e.getMessage());
             return null;
         }
+    }
+
+    /** 원격 스토리지에 보존된 chunk 식별자. uploader 비활성이면 빈 목록. */
+    public List<String> listRemoteChunks(int maxItems) {
+        return uploader.listRemote(maxItems);
+    }
+
+    /** 활성 uploader 의 backend 식별 (메트릭/UI 용). */
+    public String uploaderBackend() {
+        return uploader.backendName();
     }
 
     /** 마지막 rollover 이후의 chunk 들. 정렬: 새 것 먼저. */
@@ -214,10 +271,36 @@ public class JfrRecorder {
 
             applyRetention();
             count("rollover", "ok");
+
+            // chunk 가 디스크에 떨어진 직후 *비동기로* 원격 사본을 만든다. 컨테이너가 죽거나
+            // 디스크가 손상돼도 원격엔 남도록. 업로드 자체가 실패해도 chunk 는 디스크의 retention
+            // 까지 살아있어 복구 경로가 두 단계.
+            scheduleUpload(file);
         } catch (Exception e) {
             log.warn("JFR rollover failed: {}", e.getMessage());
             count("rollover", "error");
         }
+    }
+
+    /**
+     * 업로드 task — uploadExecutor 의 단일 스레드에서 직렬 처리. 실패해도 retention 까지의
+     * 디스크 보유분이 살아있으므로 *지금 실패한 chunk 는 그대로 두고 다음 rollover 로 진행*.
+     * 일반적인 retry queue 가 적합한 자리지만, 본 단계에서는 단순화 — 운영 부담 (failure
+     * tracking 으로 디스크가 차는 위험) 보다 단순 idempotent 가 안전하다고 봄.
+     */
+    private void scheduleUpload(Path chunk) {
+        if (uploader instanceof NoopJfrChunkUploader) return;
+        uploadExecutor.submit(() -> {
+            try {
+                uploader.upload(chunk);
+            } catch (JfrChunkUploader.UploadException e) {
+                log.warn("JFR chunk upload failed: {} ({})", chunk.getFileName(), e.getMessage());
+            } catch (Throwable t) {
+                // SDK 가 던지는 예상 외 예외도 흡수 — 업로드 task 는 *절대* uploadExecutor 를
+                // 죽이면 안 됨 (다음 chunk 도 같은 executor 를 쓴다).
+                log.warn("JFR chunk upload threw unexpected error: {}", t.toString());
+            }
+        });
     }
 
     /** maxRetained 초과 chunk 삭제. 가장 오래된 것부터. */

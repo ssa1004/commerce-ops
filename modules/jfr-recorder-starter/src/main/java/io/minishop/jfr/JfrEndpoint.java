@@ -35,11 +35,18 @@ public class JfrEndpoint {
     public Map<String, Object> status() {
         List<Path> chunks = recorder.listChunks();
         Instant startedAt = recorder.getStartedAt();
+        // remote listing 은 외부 호출 (S3 listObjects) 이라 비용/지연이 있다 — 운영자가 의도적
+        // 으로 호출하는 actuator 라 비용은 허용. 응답 무게는 props 의 maxRemoteListing 이 가드.
+        // uploader 가 noop 이면 빈 목록 — 같은 응답 모양을 유지해 클라이언트 처리 단순화.
+        List<String> remote = recorder.listRemoteChunks(Integer.MAX_VALUE);
         return Map.of(
                 "active", recorder.isStarted(),
                 "startedAt", startedAt != null ? startedAt.toString() : "",
+                "uploaderBackend", recorder.uploaderBackend(),
                 "chunkCount", chunks.size(),
-                "chunks", chunks.stream().map(p -> p.getFileName().toString()).toList()
+                "chunks", chunks.stream().map(p -> p.getFileName().toString()).toList(),
+                "remoteChunkCount", remote.size(),
+                "remoteChunks", remote
         );
     }
 
