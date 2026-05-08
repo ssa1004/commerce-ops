@@ -1,0 +1,105 @@
+# 2-tier 의 *agent (앞단)* — 어플리케이션 서비스가 OTLP 로 보낸 trace 를 받아
+# `loadbalancing` exporter 로 backend pool 에 전달한다. 메트릭/로그는 기존처럼
+# 직접 백엔드로 흘려보낸다 (메트릭/로그는 trace 처럼 *완전한 trace 단위 의사결정* 이
+# 필요하지 않아 fan-out 만으로 충분).
+#
+# 왜 2-tier 가 필요한가:
+#   - tail_sampling 은 *한 trace 의 모든 span 이 같은 collector 인스턴스 메모리에 있어야*
+#     의사결정이 정확하다 (error/slow/random 결합 OR — 전체 결과를 봐야 함).
+#   - 단일 collector 가 saturate 되면 → 수평 확장이 필요한데, 그냥 round-robin 으로
+#     spread 하면 같은 trace 의 span 이 여러 인스턴스로 흩어져 *의사결정 자체가 부정확*
+#     해진다 (한 쪽엔 ERROR span, 다른 쪽엔 root span — 양쪽 다 "이 trace 는 잘 모르겠다"
+#     라는 결과로 끝날 수 있음).
+#   - loadbalancing exporter 의 `routing_key: traceID` 는 *같은 traceID 는 항상 같은
+#     backend* (consistent hashing) — pool 에 새 인스턴스가 추가/제거돼도 대다수 trace 의
+#     라우팅이 유지된다 (rendezvous hashing 변형).
+#
+# resolver 는 backend pool 의 멤버를 어떻게 알아낼지를 결정. 운영에선 보통 dns (k8s
+# headless service 의 endpoint slice). docker-compose 환경은 static (compose 가 만든
+# 4317 포트의 컨테이너 이름) 으로 충분.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # agent 는 가벼운 buffer 만 — tail_sampling 은 backend 에서.
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 75
+    spike_limit_percentage: 25
+
+  # 환경 라벨 — backend 까지 그대로 전파.
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: dev
+        action: upsert
+
+  batch:
+    send_batch_size: 1024
+    timeout: 5s
+
+exporters:
+  # *핵심* — trace 만 loadbalancing 으로 backend pool 에 분배.
+  # routing_key=traceID 가 보장: 같은 traceID 의 모든 span 은 같은 backend 인스턴스로.
+  # protocol=otlp/grpc — backend 도 같은 OTLP 수신.
+  loadbalancing:
+    protocol:
+      otlp:
+        tls:
+          insecure: true
+        timeout: 10s
+    resolver:
+      static:
+        hostnames:
+          - otel-backend-1:4317
+          - otel-backend-2:4317
+    routing_key: traceID
+
+  # 메트릭/로그는 trace 와 무관하므로 backend pool 을 거치지 않고 직접 전송.
+  # backend pool 인스턴스가 여러 개라 어디로 보내든 똑같이 처리되지만, agent → backend
+  # → 외부 의 hop 을 줄여 latency / 비용 모두 이득.
+  otlphttp/prometheus:
+    endpoint: http://prometheus:9090/api/v1/otlp
+    tls:
+      insecure: true
+
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
+
+  debug:
+    verbosity: basic
+
+service:
+  telemetry:
+    metrics:
+      level: detailed
+      address: 0.0.0.0:8888
+
+  pipelines:
+    # trace 파이프라인:
+    #   memory_limiter → resource → batch → loadbalancing
+    # batch 가 *loadbalancing 앞* — batch 가 trace 의 span 을 묶어주는 게 아니라 수신
+    # 단위로 묶기만 한다는 점 주의. loadbalancing 은 span 별로 traceID 를 보고 라우팅
+    # 하므로 batch 와 무관.
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [loadbalancing]
+
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlphttp/prometheus]
+
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlphttp/loki]

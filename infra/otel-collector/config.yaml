@@ -1,3 +1,9 @@
+# 단일 collector — 데모/저트래픽 환경의 기본 구성. 한 인스턴스가 receive ~ tail_sampling
+# ~ export 까지 전부 책임. 트래픽이 늘어나 saturate 되면 2-tier 로 분리:
+# `agent.yaml` + `backend.yaml` + `docker-compose.collector-2tier.yml` 참조.
+# 2-tier 의 핵심은 `loadbalancing` exporter 의 `routing_key=traceID` — 같은 trace 의
+# 모든 span 이 같은 backend 인스턴스로 라우팅돼야 tail_sampling 의 의사결정이 정확.
+
 receivers:
   otlp:
     protocols:
