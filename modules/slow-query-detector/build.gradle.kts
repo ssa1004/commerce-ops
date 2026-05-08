@@ -28,10 +28,13 @@ dependencyManagement {
 }
 
 dependencies {
-	// 의존성 격리: 라이브러리는 Spring Boot의 starter 표면에 직접 의존하지 않는다.
-	// 사용자 앱이 가져오는 spring-boot-autoconfigure / spring-jdbc / micrometer를 그대로 사용.
+	// 의존성 격리: 라이브러리는 Spring Boot starter 표면에 직접 의존하지 않는다 — 사용자 앱이
+	// 들고 있는 표면을 그대로 사용. 컴파일에 필요한 최소 모듈만 compileOnly 로 선언.
 	compileOnly("org.springframework.boot:spring-boot-autoconfigure")
-	compileOnly("org.springframework.boot:spring-boot-starter-jdbc")
+	// NPlusOneContext 가 TransactionSynchronization / TransactionSynchronizationManager 를 참조한다
+	// (트랜잭션 종료 시점에 ThreadLocal 정리). spring-tx 는 사용자 앱이 spring-boot-starter-data-jpa
+	// 또는 spring-boot-starter-jdbc 를 통해 항상 들고 오는 모듈이라 compileOnly 로 충분.
+	compileOnly("org.springframework:spring-tx")
 	// servlet 환경에서만 의미있는 NPlusOneRequestFilter 만 등록 — 컴파일 시점엔 spring-web /
 	// jakarta.servlet API 가 필요하지만 런타임은 사용자 앱 (services/*) 이 spring-web 을 가져올 때만
 	// 활성화된다 (@ConditionalOnClass + @ConditionalOnWebApplication).
