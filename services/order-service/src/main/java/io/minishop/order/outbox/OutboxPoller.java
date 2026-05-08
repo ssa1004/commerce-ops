@@ -12,6 +12,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * outbox 테이블에 쌓인 이벤트를 Kafka 로 publish.
@@ -53,10 +55,13 @@ public class OutboxPoller {
             if (batch.isEmpty()) return;
 
             log.debug("Outbox poller picked {} pending events", batch.size());
+            long sendTimeoutMs = props.poller().sendTimeoutMs();
             for (OutboxEvent event : batch) {
                 try {
+                    // .get() 에 timeout — 안 두면 Kafka 가 느릴 때 트랜잭션 + 행 락이 무기한
+                    // 잡혀 다른 poller 인스턴스가 같은 batch 를 못 가져가는 cascade 가 일어남.
                     kafkaTemplate.send(event.getTopic(), String.valueOf(event.getAggregateId()), event.getPayload())
-                            .get();
+                            .get(sendTimeoutMs, TimeUnit.MILLISECONDS);
                     event.markSent();
                     meterRegistry.counter("outbox.publish", Tags.of("topic", event.getTopic(), "outcome", "sent")).increment();
                 } catch (InterruptedException ie) {
@@ -64,18 +69,27 @@ public class OutboxPoller {
                     event.markAttemptFailed(ie.getMessage());
                     meterRegistry.counter("outbox.publish", Tags.of("topic", event.getTopic(), "outcome", "interrupted")).increment();
                     return;
+                } catch (TimeoutException te) {
+                    log.warn("Kafka send timed out after {}ms for outbox id={} topic={}",
+                            sendTimeoutMs, event.getId(), event.getTopic());
+                    handleFailure(event, "send timeout after " + sendTimeoutMs + "ms");
+                    meterRegistry.counter("outbox.publish", Tags.of("topic", event.getTopic(), "outcome", "timeout")).increment();
                 } catch (ExecutionException e) {
                     String reason = e.getCause() == null ? e.getMessage() : e.getCause().getMessage();
                     log.warn("Kafka send failed for outbox id={} topic={}: {}", event.getId(), event.getTopic(), reason);
-                    if (event.getAttempts() + 1 >= props.poller().maxAttempts()) {
-                        event.markFailed(reason);
-                        meterRegistry.counter("outbox.publish", Tags.of("topic", event.getTopic(), "outcome", "failed")).increment();
-                    } else {
-                        event.markAttemptFailed(reason);
-                        meterRegistry.counter("outbox.publish", Tags.of("topic", event.getTopic(), "outcome", "retry")).increment();
-                    }
+                    handleFailure(event, reason);
+                    String outcome = event.getAttempts() >= props.poller().maxAttempts() ? "failed" : "retry";
+                    meterRegistry.counter("outbox.publish", Tags.of("topic", event.getTopic(), "outcome", outcome)).increment();
                 }
             }
         });
+    }
+
+    private void handleFailure(OutboxEvent event, String reason) {
+        if (event.getAttempts() + 1 >= props.poller().maxAttempts()) {
+            event.markFailed(reason);
+        } else {
+            event.markAttemptFailed(reason);
+        }
     }
 }
