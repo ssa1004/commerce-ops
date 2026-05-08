@@ -6,9 +6,12 @@
 
 | 파일 | 목적 | 패턴 |
 |---|---|---|
-| `baseline.js` | 현재는 `/actuator/health` smoke (간단 기동 확인), Phase 2 에서 주문 정상 흐름으로 전환 | 50 VUs (가상 사용자), 5분 |
-| `peak.js` | 현재는 `/actuator/health` peak smoke, Phase 2 에서 이벤트성 주문 부하로 전환 | 5분 ramp-up (점진 증가) → 200 VUs 10분 → ramp-down (점진 감소) |
-| `soak.js` | 현재는 `/actuator/health` soak smoke (장시간 안정성 확인), Phase 2 에서 장시간 주문 부하로 전환 | 30 VUs, 2시간 |
+| `baseline.js` | 평상시 트래픽 — `POST /orders` 정상 흐름 | 50 VUs (가상 사용자), 5분 |
+| `peak.js` | 이벤트성 피크 — `POST /orders` 정상 흐름 | 5분 ramp-up (점진 증가) → 200 VUs 10분 → ramp-down (점진 감소) |
+| `soak.js` | 장시간 안정성 — `POST /orders` 정상 흐름 | 30 VUs, 2시간 |
+| `health-only.js` | 비즈니스 엔드포인트 없이 `/actuator/health` 만 두드리는 기동 smoke | 1 VU, 30s |
+
+201 (PAID) 외 409 (OUT_OF_STOCK) / 402 (PAYMENT_DECLINED) 는 의도된 비즈니스 결과로, 5xx 만 실패로 카운트한다.
 
 ## 실행
 
@@ -26,10 +29,7 @@ k6 run --out experimental-prometheus-rw=http://localhost:9090/api/v1/write load/
 BASE_URL=http://localhost:8081 k6 run load/baseline.js
 ```
 
-## TODO (Phase 2)
+## TODO
 
-- [ ] baseline.js — POST /orders happy path
-- [ ] peak.js — 200 VU 10분
-- [ ] soak.js — 2시간
-- [ ] 시나리오별 임계 (thresholds) 정의
-- [ ] CI에서 smoke 부하 자동 실행
+- [ ] CI에서 smoke 부하 (`health-only.js`) 자동 실행
+- [ ] 시나리오별 SLO 임계 재정의 (Phase 4 SLO 작업과 같이)
