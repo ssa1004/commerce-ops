@@ -78,6 +78,14 @@ otel:
     logback-appender:
       experimental-log-attributes: true
 
+app:
+  # OrderSAGA 의 Spring StateMachine 모델 — 기존 동기 if/else 흐름과 *병행* (shadow) 으로 진행해
+  # 두 결정이 일치하는지 메트릭으로 비교. enforce=true 로 두면 mismatch 시 즉시 예외 (CI / staging
+  # 검증용). 운영은 shadow 로 두고 mismatch 알람을 모니터링. ADR-019 참조.
+  saga:
+    machine:
+      enforce: ${SAGA_MACHINE_ENFORCE:false}
+
 mini-shop:
   payment:
     url: ${PAYMENT_URL:http://localhost:8082}
@@ -116,5 +124,19 @@ mini-shop:
     dump-directory: ${JFR_DUMP_DIR:/tmp/jfr}
     settings: ${JFR_SETTINGS:default}
     mask-sensitive-events: ${JFR_MASK_SENSITIVE:false}
+    # JFR chunk 의 원격 사본 (S3 호환 스토리지). 컨테이너가 죽거나 노드가 빠져도 사후 분석이
+    # 가능하도록. 기본 disable — dev 환경 진입장벽 유지. 운영은 IAM role + endpoint=S3 로,
+    # 로컬 데모는 minio + 정적 키로.
+    upload:
+      enabled: ${JFR_UPLOAD_ENABLED:false}
+      backend: ${JFR_UPLOAD_BACKEND:s3}
+      bucket: ${JFR_UPLOAD_BUCKET:minishop-jfr}
+      region: ${JFR_UPLOAD_REGION:us-east-1}
+      endpoint: ${JFR_UPLOAD_ENDPOINT:}
+      key-prefix: ${JFR_UPLOAD_PREFIX:minishop/dev}
+      pod-id: ${JFR_UPLOAD_POD_ID:}    # blank → HOSTNAME 환경변수
+      access-key: ${JFR_UPLOAD_ACCESS_KEY:}   # blank → DefaultCredentialsProvider (IAM role)
+      secret-key: ${JFR_UPLOAD_SECRET_KEY:}
+      upload-ad-hoc-dumps: ${JFR_UPLOAD_AD_HOC:false}
 
 # 로그 패턴/appender는 src/main/resources/logback-spring.xml에서 정의.
