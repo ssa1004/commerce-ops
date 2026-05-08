@@ -2,11 +2,13 @@
 <configuration>
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
 
-    <!-- 콘솔: 사람이 보는 로그. trace_id/span_id를 인라인으로 포함해
-         로컬 개발 중에도 trace 단위로 묶어서 보기 쉽다. -->
+    <!-- 콘솔: 사람이 보는 로그. trace_id/span_id 를 인라인으로 포함해 로컬 개발 중에도
+         trace 단위로 묶어서 보기 쉽다. outboxRunId 는 백그라운드 폴러 실행 단위 식별자 (요청 trace 와는
+         별개의 흐름) — 같은 폴 사이클의 로그를 묶을 때 사용. userId 슬롯은 ADR-013 마스킹 정책
+         (LogIds.userId) 을 거친 해시값이 들어가는 곳. -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>%d{ISO8601} %-5level [%X{trace_id:-}/%X{span_id:-}] %thread %logger{36} - %msg%n</pattern>
+            <pattern>%d{ISO8601} %-5level [%X{trace_id:-}/%X{span_id:-}] [%X{outboxRunId:-} %X{userId:-}] %thread %logger{36} - %msg%n</pattern>
         </encoder>
     </appender>
 
