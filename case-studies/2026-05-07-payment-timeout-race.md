@@ -134,16 +134,20 @@ order 는 그 결과를 모른 채 보상으로 들어간다.
 | payment → mock-pg (read timeout) | **5,000 ms** |
 | mock-pg 지연 (장애 주입 후) | 평균 1,500 ms / 표준편차 400 ms |
 
-호출자 (order) 와 피호출자 (payment) 의 read timeout 이 **같다**.
-이러면 mock-pg 가 5s 직전에 응답하는 케이스에서 거의 항상 in-doubt 가 발생한다.
+호출자 (order) 와 피호출자 (payment) 의 read timeout 이 **똑같이 5s**.
+이 상태에서 mock-pg 가 5s 직전에 응답하면 두 가지가 거의 동시에 일어난다:
+- order 의 5s 가 도달해 호출이 끊긴다.
+- payment 는 응답을 받아 SUCCESS 로 커밋한다.
 
-올바른 설계는 호출 체인을 따라 timeout 이 **단조 감소** (호출자가 항상 더 큰 timeout) 해야 한다:
+→ in-doubt 가 거의 항상 발생.
+
+올바른 설계는 호출 체인을 따라 timeout 이 **단조 감소** — *호출자가 항상 피호출자보다 큰 값* — 이어야 한다:
 
 ```
 order  ─5s→  payment  ─≤4s→  PG
 ```
 
-호출자의 timeout이 항상 더 커야, 피호출자가 끝까지 돌고 응답을 보낼 시간이 남는다.
+호출자의 timeout 이 더 커야, 피호출자가 자기 timeout 안에 작업을 끝내고 응답까지 돌려보낼 시간이 남는다.
 
 ## Mitigation
 

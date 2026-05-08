@@ -166,10 +166,11 @@ class OrderServiceApplicationTests {
 						List.of(new CreateOrderItemRequest(1001L, 1, new BigDecimal("9990.00")))),
 				OrderResponse.class);
 
-		// Spring Boot 3.5 + Micrometer 1.14 환경에서 JvmMetricsAutoConfiguration 의 MeterBinder
-		// (예: jvm_memory_used_bytes) 들은 ApplicationStartedEvent 직후에 등록된다. SpringBootTest
-		// RANDOM_PORT 부팅 직후 첫 /actuator/prometheus 스크레이프가 그 등록보다 먼저 실행되면
-		// 본문에 JVM 메트릭이 누락되어 어셈션이 실패하는 경합이 있었다. 폴링으로 안정화.
+		// 부팅 직후 경합 안정화 — Spring Boot 3.5 + Micrometer 1.14 환경에서 JvmMetricsAutoConfiguration
+		// 의 MeterBinder (jvm_memory_used_bytes 등) 는 ApplicationStartedEvent 직후에 등록된다.
+		// SpringBootTest RANDOM_PORT 부팅이 끝나고 첫 /actuator/prometheus 스크레이프가 그 등록보다
+		// 먼저 실행되면 본문에 JVM 메트릭이 빠져 있어 contains 어설션이 깨지는 경합이 있었다.
+		// 한 번 호출로 단정짓는 대신 5초 동안 100ms 간격으로 폴링해 메트릭이 등록되는 시점을 기다린다.
 		await().atMost(Duration.ofSeconds(5))
 				.pollInterval(Duration.ofMillis(100))
 				.untilAsserted(() -> {

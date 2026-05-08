@@ -54,11 +54,15 @@ public class DistributedLockService {
             if (lock.isHeldByCurrentThread()) {
                 lock.unlock();
             } else {
-                // 작업이 lease (락 보유 시간) 보다 오래 걸려 락이 자동 만료된 상태.
-                // 다른 요청이 이미 끼어들었을 가능성이 있으므로 경고 로그 + 카운터.
-                // 이 시점에 동시 진입 자체는 이미 발생한 상태 — 실제 안전망은 Inventory 의 JPA @Version
-                // 낙관적 락 (DB 레벨에서 뒤늦게 커밋하는 쪽이 실패) 이다. 이 카운터는 fence/zombie
-                // 경합이 운영 중 얼마나 발생하는지 추적하는 신호.
+                // 여기 들어온다는 건 작업이 lease (Redis 락의 자동 만료 시간) 보다 오래 걸렸고,
+                // 그 사이 락이 만료되어 다른 요청이 이미 같은 자원에 끼어들었을 수 있다는 뜻.
+                //
+                // 동시 진입 자체는 *이미* 일어난 상태라 여기서는 막을 수 없다. 진짜 안전망은 Inventory
+                // 엔티티의 JPA @Version 낙관적 락 (둘이 같이 갱신하면 늦게 커밋하는 쪽이 실패) — 자원
+                // 무결성은 그쪽이 책임진다.
+                //
+                // 이 카운터는 그 위험한 윈도우가 운영 중 얼마나 자주 열리는지 추적하는 신호. 값이 꾸준히
+                // 올라가면 lease 가 작업 평균 시간 대비 너무 짧다는 뜻이라 튜닝 신호로 쓴다.
                 log.warn("Lock {} was no longer held when releasing — likely lease expired", fullKey);
                 meterRegistry.counter("inventory.lock.lease_expired", Tags.of("key", "product"))
                         .increment();

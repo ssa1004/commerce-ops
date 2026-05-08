@@ -11,8 +11,8 @@ clamp_min(sum(rate(inventory_lock_acquire_seconds_count[5m])), 0.001)
 ```
 
 ## Impact
-- 503 LOCK_TIMEOUT 응답 → order-service 에서 INVENTORY_INFRA outcome 으로 처리되어 주문 실패
-- 경합 (contention) 이 인기 상품 한두 개에 몰린 경우가 대부분 (이벤트성 트래픽 — 깜짝 세일/타임딜)
+- inventory-service 가 503 LOCK_TIMEOUT 으로 응답 → order-service 가 그 응답을 받아 X-Order-Outcome=INVENTORY_INFRA 로 분류 → 주문 실패.
+- 경합 (contention — 같은 자원을 두고 여러 요청이 줄 서는 상태) 이 인기 상품 한두 개에 몰린 경우가 대부분 (이벤트성 트래픽 — 깜짝 세일/타임딜).
 
 ## Diagnosis
 

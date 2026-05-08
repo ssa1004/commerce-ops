@@ -25,7 +25,7 @@ sum by (application) (increase(n_plus_one_total[5m])) > 0
    {service_name="$service"} |= "Suspected N+1"
    ```
    메시지 형식: `Suspected N+1 (5 executions): <정규화 SQL>` + 호출자 stack 일부.
-   stack 의 사용자 코드 프레임 (Spring/Hibernate 프레임은 거른) → 어떤 컨트롤러/서비스/리포지토리 메서드가 만들었는지 바로 식별.
+   stack 에서 Spring/Hibernate 프레임을 걸러내고 *사용자 코드 프레임* (예: `OrderController#list`, `OrderService#loadOrders`) 만 보면 어느 컨트롤러/서비스/리포지토리 메서드가 트리거인지 바로 식별된다.
 
 2. **Slow Query & N+1 대시보드** — `n_plus_one_total` 의 증가율 (rate) 이 어느 application 에서 올라가는지 확인.
 

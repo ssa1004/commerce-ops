@@ -17,15 +17,20 @@ import javax.sql.DataSource;
  * 의존성을 추가하면 Spring Boot 가 자동으로 이 설정을 적용. `mini-shop.slow-query.enabled=false`
  * 로 끌 수 있다.
  *
- * 활성 조건:
- *  - DataSource bean 이 있어야 함 (감쌀 대상이 있어야 의미가 있음)
- *  - net.ttddyy.dsproxy 클래스가 클래스패스에 있어야 함 (모듈의 api 의존성으로 들어옴)
- *  - MeterRegistry bean 이 있어야 함 (Spring Boot Actuator + Micrometer 가 셋업되어 있어야 함)
+ * <p>활성 조건:
+ * <ul>
+ *   <li>DataSource bean 이 있어야 함 — 감쌀 대상이 있어야 의미가 있음.</li>
+ *   <li>{@code net.ttddyy.dsproxy} 클래스가 클래스패스에 있어야 함 — 모듈의 api 의존성으로 자동 포함.</li>
+ *   <li>MeterRegistry bean 이 있어야 함 — Spring Boot Actuator + Micrometer 가 셋업된 상태.</li>
+ * </ul>
  *
- * 순서 주의: {@code @ConditionalOnBean} 은 후보 bean 이 이미 등록된 다음에만 정확히 평가된다.
- * MeterRegistry 는 actuator 의 MetricsAutoConfiguration 이 만들기 때문에, 그 클래스가
- * 클래스패스에 있을 때 그 뒤로 자동 정렬되어야 한다. 클래스 직접 참조는 actuator 의존성을 강제하므로
- * 문자열 이름으로 참조해 선택적 의존성으로 둔다.
+ * <p>순서 주의: {@code @ConditionalOnBean} 은 *후보 bean 이 이미 등록된 시점* 에만 정확히 평가된다 (그 전에
+ * 평가하면 "아직 없음" 으로 보고 건너뛴다). MeterRegistry 는 actuator 의 MetricsAutoConfiguration 이
+ * 만들기 때문에, 본 자동 설정을 그 뒤로 정렬해야 한다.
+ *
+ * <p>그래서 actuator 클래스를 {@code afterName} 으로 *문자열 이름* 으로 적는다. 클래스로 직접 참조하면
+ * 컴파일 단계에서 actuator 의존성이 강제되는데, 본 모듈은 actuator 없는 환경 (예: 테스트용 슬림
+ * 컨텍스트) 에서도 안전하게 평가되어야 하므로 선택적 (optional) 의존성으로 둔다.
  */
 @AutoConfiguration(
         after = DataSourceAutoConfiguration.class,
@@ -56,13 +61,15 @@ public class SlowQueryDetectorAutoConfiguration {
     }
 
     /**
-     * 서블릿 환경에서 worker thread 가 재사용되면, 트랜잭션 밖에서 실행된 쿼리가 ThreadLocal
-     * 에 남아 다음 요청까지 누적되는 leak 가 가능하다 (NPlusOneContext 주석 참고).
-     * OncePerRequestFilter 가 클래스패스에 있을 때만 등록 — webflux 등 비-서블릿 환경에선 비활성.
+     * 서블릿 환경 전용 — 매 요청 끝에 ThreadLocal 을 비우는 필터를 등록한다 (배경: {@link NPlusOneRequestFilter}
+     * Javadoc — worker thread 재사용으로 인한 카운트 누수).
      *
-     * 별도 nested {@code @Configuration} 으로 분리한 이유: 바깥 auto-config 가 로드될 때
-     * 필터 관련 클래스 (jakarta.servlet, FilterRegistrationBean) 가 로드되지 않도록 하기 위함.
-     * non-web 환경 (예: 모듈 단위 컨텍스트 테스트) 에서도 안전하게 평가된다.
+     * <p>왜 nested {@code @Configuration} 으로 분리했나:
+     * <ul>
+     *   <li>바깥 auto-config 가 로드될 때 jakarta.servlet / FilterRegistrationBean 가 함께 로드되지 않도록 격리.</li>
+     *   <li>덕분에 webflux 나 non-web 컨텍스트 (예: 모듈 단위 슬림 테스트) 에서도 NoClassDefFoundError 없이
+     *       평가된다 — 조건이 안 맞으면 nested 자체가 통째로 건너뛰어진다.</li>
+     * </ul>
      */
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
@@ -72,7 +79,7 @@ public class SlowQueryDetectorAutoConfiguration {
         public org.springframework.boot.web.servlet.FilterRegistrationBean<NPlusOneRequestFilter> nPlusOneRequestFilterRegistration() {
             org.springframework.boot.web.servlet.FilterRegistrationBean<NPlusOneRequestFilter> reg =
                     new org.springframework.boot.web.servlet.FilterRegistrationBean<>(new NPlusOneRequestFilter());
-            // 가능한 한 마지막에 정리하도록 LOWEST_PRECEDENCE — 다른 필터가 만든 쿼리도 윈도우에 포함되게 한다.
+            // LOWEST_PRECEDENCE = 다른 모든 필터가 끝난 *뒤* 에 finally 블록을 만난다 → 다른 필터가 만든 쿼리까지 같은 윈도우에 포함된다.
             reg.setOrder(org.springframework.core.Ordered.LOWEST_PRECEDENCE);
             reg.addUrlPatterns("/*");
             return reg;
