@@ -4,6 +4,8 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import net.ttddyy.dsproxy.support.ProxyDataSource;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.actuate.autoconfigure.metrics.MetricsAutoConfiguration;
+import org.springframework.boot.actuate.autoconfigure.metrics.export.simple.SimpleMetricsExportAutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -59,6 +61,34 @@ class SlowQueryDetectorAutoConfigurationTests {
 					SlowQueryDetectorProperties props = ctx.getBean(SlowQueryDetectorProperties.class);
 					assertThat(props.slowThreshold().toMillis()).isEqualTo(500);
 					assertThat(props.nPlusOneThreshold()).isEqualTo(10);
+				});
+	}
+
+	/**
+	 * 회귀 방지: 운영 환경에선 MeterRegistry 를 actuator 의 MetricsAutoConfiguration 이 만든다.
+	 * 그쪽이 우리 자동설정보다 *나중에* 평가되면 {@code @ConditionalOnBean(MeterRegistry)} 가
+	 * 빈을 못 찾아 자동설정 전체가 조용히 비활성화되는 사고가 났었다 (감지기 자체가 안 붙음).
+	 *
+	 * 여기서는 사용자 설정으로 MeterRegistry 를 안 주고 actuator 의 자동설정만 추가해서,
+	 * 우리 자동설정이 actuator 뒤로 정렬되어 정상 활성화되는지 확인.
+	 */
+	@Test
+	void activatesWhenMeterRegistryComesFromActuatorAutoConfiguration() {
+		new ApplicationContextRunner()
+				.withConfiguration(AutoConfigurations.of(
+						DataSourceAutoConfiguration.class,
+						MetricsAutoConfiguration.class,
+						SimpleMetricsExportAutoConfiguration.class,
+						SlowQueryDetectorAutoConfiguration.class
+				))
+				.withPropertyValues(
+						"spring.datasource.url=jdbc:h2:mem:slowq2;DB_CLOSE_DELAY=-1",
+						"spring.datasource.driver-class-name=org.h2.Driver"
+				)
+				.run(ctx -> {
+					assertThat(ctx).hasSingleBean(MeterRegistry.class);
+					assertThat(ctx).hasSingleBean(SlowQueryListener.class);
+					assertThat(ctx.getBean(DataSource.class)).isInstanceOf(ProxyDataSource.class);
 				});
 	}
 
