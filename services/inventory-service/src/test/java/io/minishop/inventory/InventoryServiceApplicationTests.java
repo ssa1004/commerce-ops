@@ -20,7 +20,10 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.Duration;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Testcontainers
@@ -124,10 +127,17 @@ class InventoryServiceApplicationTests {
 		http.postForEntity("/inventories/reserve",
 				new ReserveRequest(1002L, 9999L, 1), ReservationResponse.class);
 
-		ResponseEntity<String> metrics = http.getForEntity("/actuator/prometheus", String.class);
-		assertThat(metrics.getStatusCode()).isEqualTo(HttpStatus.OK);
-		assertThat(metrics.getBody()).contains("jvm_memory_used_bytes");
-		assertThat(metrics.getBody()).contains("http_server_requests_seconds");
-		assertThat(metrics.getBody()).contains("inventory_lock_acquire_seconds");
+		// JvmMetricsAutoConfiguration 의 MeterBinder 들은 ApplicationStartedEvent 직후에 등록되므로
+		// 부팅 직후 첫 스크레이프가 그 등록보다 먼저 실행되면 jvm_memory_used_bytes 가 누락될 수 있다.
+		await().atMost(Duration.ofSeconds(5))
+				.pollInterval(Duration.ofMillis(100))
+				.untilAsserted(() -> {
+					ResponseEntity<String> metrics = http.getForEntity("/actuator/prometheus", String.class);
+					assertThat(metrics.getStatusCode()).isEqualTo(HttpStatus.OK);
+					assertThat(metrics.getBody())
+							.contains("jvm_memory_used_bytes")
+							.contains("http_server_requests_seconds")
+							.contains("inventory_lock_acquire_seconds");
+				});
 	}
 }

@@ -20,8 +20,10 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
@@ -86,9 +88,19 @@ class PaymentServiceApplicationTests {
 
 	@Test
 	void prometheusEndpointExposesJvmAndHttpMetrics() {
-		ResponseEntity<String> metrics = http.getForEntity("/actuator/prometheus", String.class);
-		assertThat(metrics.getStatusCode()).isEqualTo(HttpStatus.OK);
-		assertThat(metrics.getBody()).contains("jvm_memory_used_bytes");
-		assertThat(metrics.getBody()).contains("http_server_requests_seconds");
+		// http_server_requests_seconds 는 첫 요청이 끝난 뒤에 등록되므로 한 번 두드려서 워밍업.
+		http.getForEntity("/actuator/health", String.class);
+
+		// JvmMetricsAutoConfiguration 의 MeterBinder 들은 ApplicationStartedEvent 직후에 등록되므로
+		// 부팅 직후 첫 스크레이프가 그 등록보다 먼저 실행되면 jvm_memory_used_bytes 가 누락될 수 있다.
+		await().atMost(Duration.ofSeconds(5))
+				.pollInterval(Duration.ofMillis(100))
+				.untilAsserted(() -> {
+					ResponseEntity<String> metrics = http.getForEntity("/actuator/prometheus", String.class);
+					assertThat(metrics.getStatusCode()).isEqualTo(HttpStatus.OK);
+					assertThat(metrics.getBody())
+							.contains("jvm_memory_used_bytes")
+							.contains("http_server_requests_seconds");
+				});
 	}
 }
