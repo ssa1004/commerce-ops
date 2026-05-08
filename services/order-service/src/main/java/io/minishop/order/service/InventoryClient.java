@@ -1,5 +1,6 @@
 package io.minishop.order.service;
 
+import io.minishop.order.concurrency.LimitExceededException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -39,6 +40,12 @@ public class InventoryClient {
                             }
                     )
                     .body(ReservationResult.class);
+        } catch (LimitExceededException e) {
+            // adaptive limiter 가 cascade 차단으로 즉시 거절 — 진짜 inventory 가 아니라 *우리 쪽이*
+            // 한도 초과 판단을 한 것. 여기서 그대로 throw 하면 OrderService 가 outcome 매핑.
+            log.warn("inventory call rejected by adaptive limiter (limit={}): {}",
+                    e.getCurrentLimit(), e.getMessage());
+            throw e;
         } catch (ResourceAccessException e) {
             log.warn("inventory-service unreachable: {}", e.getMessage());
             throw new InventoryInfraException("inventory-service unreachable: " + e.getMessage(), e);
@@ -48,6 +55,9 @@ public class InventoryClient {
     /**
      * Idempotent — 동일 (orderId, productId)로 여러 번 호출해도 안전.
      * 보상 호출이므로 인프라 장애 시에도 throw하지 않고 로그만 남긴다 (상위에서 이미 실패 처리 중).
+     *
+     * <p>release 가 limiter 한도를 만나도 마찬가지 — 보상은 *어차피 best-effort* 라 즉시 거절을 받아
+     * 도 throw 하지 않고 로그만. reconciliation 잡 (ADR-011) 이 사후에 부정합을 잡는다.
      */
     public void release(Long productId, Long orderId) {
         try {

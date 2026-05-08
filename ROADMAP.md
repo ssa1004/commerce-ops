@@ -137,6 +137,14 @@
 - [x] 16개 단위 테스트 (속성 / 동작 / 자동설정 wiring)
 - [x] order-service 에 적용 + [JFR 분석 가이드](docs/runbook/jfr-analysis.md) (JMC / async-profiler / programmatic)
 
+### Step 5 — Adaptive concurrency limiter (Netflix concurrency-limits, Gradient2) ✅
+- [x] Netflix concurrency-limits (`Gradient2Limit` — TCP Vegas 영감, latency 기반 적응) order-service 에 도입 (ADR-016)
+- [x] RestClient `ClientHttpRequestInterceptor` 위치에 wiring — payment / inventory 별 독립 한도
+- [x] 한도 초과 시 `LimitExceededException` → 503 + Retry-After 1s (cascade 차단). 5xx → onDropped, 4xx → onSuccess
+- [x] 메트릭: `client.concurrency.limit{upstream}`, `client.concurrency.in_flight{upstream}` gauge
+- [x] 18개 단위 테스트 (속성 / limiter 동작 / interceptor / 동시성)
+- [x] 알람: `client_concurrency_limit_saturated` (P2) + [런북](docs/runbook/client-concurrency-limit-saturated.md)
+
 ### Step 6 — correlation-mdc-starter
 - [ ] OTel trace_id 가 이미 MDC (Mapped Diagnostic Context — SLF4J/Logback 의 thread-local 키밸류 저장소, 로그 패턴에서 `%X{key}` 로 출력 가능) 에 들어가는 부분은 그대로 활용
 - [ ] 추가: HTTP 헤더(X-User-Id, X-Request-Id 등)에서 비즈니스 식별자를 MDC 로 주입 (로그/트레이스에 사용자 ID 까지 같이 보이도록)
