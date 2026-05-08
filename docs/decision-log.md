@@ -233,6 +233,103 @@
   - **테스트 14개** — 모델 자체 9개 (5 시나리오 + terminal 보호 + unhandled), coordinator 5개 (shadow / enforce / unhandled / consistency).
   - **다음 phase 신호**: (a) `StateMachinePersister` + Postgres 로 SAGA 인스턴스 영속화 (재시작 후 복구), (b) 진실의 원천을 OrderService → StateMachine 으로 전환 (enforce 안정화 후), (c) graph viewer 자동화 (CI 에서 SVG 생성해 PR 첨부 — 모델 변경의 시각적 review), (d) Phase 2 Step 3c (choreography) 의 비동기 전환을 같은 모델로 검증.
 
+## ADR-020 — HikariCP 명시 튜닝 + connection leak detection
+
+- **결정**:
+  - 3개 service (order / inventory / payment) 의 `application.yml` 에 `spring.datasource.hikari.*` 를 *명시* 한다. `maximum-pool-size`, `minimum-idle`, `connection-timeout`, `max-lifetime`, `idle-timeout`, `leak-detection-threshold`, `validation-timeout` 모두 명시 + 산정 근거 주석.
+  - service 별 값은 같지 않다 — 트랜잭션 길이 / RPS 가 다름. order=20 (SAGA 흐름 진입점, RPS 가장 높음), inventory=15 (Redis lock 으로 트랜잭션 짧음), payment=12 (PG 호출 동안 트랜잭션 유지 → connection 점유 길음).
+  - 테스트 프로파일은 leak detection 비활성 (`leak-detection-threshold: 0`) — `@Transactional` method-scope 트랜잭션이 길어져 false positive 빈발.
+- **배경**:
+  - Spring Boot 의 Hikari default (`maximum-pool-size: 10`, leak detection off, 15초 max) 는 *데모/개발* 기준. 운영에서 그대로 쓰면 두 가지 사고가 흔하다:
+    1. **풀 고갈** — 트래픽 증가 / DB 일시 느림 시 connection 못 받은 호출이 connection-timeout 까지 thread 점유. 다른 요청은 그 뒤로 줄을 서서 *전체 stall*. cascade 시작점.
+    2. **connection leak** — try-with-resources 누락, 외부 트랜잭션에서 connection 직접 close 안 함, async task 가 connection 전파받고 안 돌려줌 — 발견이 느려 운영 늦은 밤 사고로 발화.
+  - leak-detection-threshold (30s) 는 *개별 connection* 이 그 시간 넘게 점유되면 stack trace 로그. 운영 트랜잭션이 10s 를 넘는 일은 거의 없어 false positive 가 적다 — 30s 가 보수적 균형점.
+  - max-lifetime (29분) 은 PostgreSQL / pgbouncer / RDS Proxy 의 idle 종료 (default 30분) 보다 *짧게* — DB 가 끊은 connection 을 hikari 가 모르고 빌려주면 다음 SQL 이 이상하게 실패하는 사고를 차단.
+  - 산정 근거 — Brett Wooldridge (HikariCP 저자) 의 "About Pool Sizing" + Little's law (`동시성 = RPS × 평균 트랜잭션 시간`). 단순히 큰 값이 좋은 게 아님 — DB 의 max_connections 와 곱해지므로 *모든 인스턴스 합 ≤ DB max_connections × 0.7* 가 상한.
+- **대안**:
+  1. **default 그대로 둠** — 데모로는 충분하지만 운영 초기에 사고로 발화하기 쉬움. *발생 전* 의 위생.
+  2. **모든 service 같은 값** — 단순하지만 service 별 트랜잭션 특성이 다른데 같은 값으로 두면 어딘가는 풀이 남고 어딘가는 모자람. 산정해서 다르게 두는 편이 정확.
+  3. **leak detection 끄고 APM 으로 모니터링** — Datadog / NewRelic 의 connection 추적이 같은 정보를 줌. 단 사고 *원인 코드 위치* 는 stack trace 가 더 직접적. 외부 도구에 의존하지 않는 1차 방어선.
+  4. **DB 측 statement_timeout 만으로 보호** — DB 가 긴 쿼리를 끊어주지만, *connection 자체* 의 누수는 못 잡음 (close 안 된 connection 은 idle 로 보일 뿐).
+- **결과**:
+  - **service 별 산정**:
+    - order: RPS 300 × 50ms = 15, 마진 5 → 20.
+    - inventory: RPS 300 × 20ms = 6, burst 마진 1.5x + 5 → 15.
+    - payment: RPS 50 × 250ms = 12.5, PG 변동 마진 → 12.
+  - **leak threshold**: order/inventory=30s, payment=20s (PG 호출 동안 connection 점유라 더 짧게).
+  - **메트릭**: Micrometer 의 `hikaricp.connections.active`, `.idle`, `.pending`, `.timeout` 자동 노출 (`/actuator/prometheus`). Grafana 패널 — *active / max* 가 80% 를 넘으면 풀 sizing 재검토 신호.
+  - **외부화** — 모든 값이 환경변수로 override 가능 (`DB_POOL_MAX`, `DB_LEAK_DETECTION_MS` 등). 운영에서 사고 없이 빠르게 튜닝.
+  - **연계** — 다음 phase 에서 connection 사용 패턴에 맞춰 SAGA / Outbox / 보상 호출의 트랜잭션 경계를 다시 점검 (트랜잭션이 외부 호출과 *겹치는* 자리가 있다면 그 시간 동안 connection 점유 → 풀 부담의 1차 원인).
+  - **다음 phase 신호**:
+    1. read replica 분리 시 read-only connection 의 별도 풀 (replica 의 max_connections 가 다름).
+    2. transaction 길이 분포의 자동 알람 — leak threshold 발화가 잦아지면 *threshold 를 더 짧게* 하는 게 아니라 *코드 경로 분석* 이 먼저.
+    3. PgBouncer transaction 모드 도입 시 max-lifetime 재산정 — pgbouncer 측 idle 끊김 정책이 다름.
+
+## ADR-021 — Kafka consumer rebalance handling + commit 전략
+
+- **결정**:
+  - order-service 의 두 consumer (`InventoryEventConsumer`, `PaymentEventConsumer`) 의 ack-mode 를 `record` → `MANUAL_IMMEDIATE` 로 변경. listener 메서드는 `Acknowledgment` 인자를 받아 *트랜잭션 commit 후* 명시 ack.
+  - assignor 를 `range` (default) → `CooperativeStickyAssignor` (KIP-429, Kafka 2.4+) 로 전환. incremental rebalance — 변경된 partition 만 revoke/assign 되어 정상 인스턴스의 처리 끊기지 않음.
+  - `OrderConsumerRebalanceListener` 신규 — `onPartitionsRevokedBeforeCommit / RevokedAfterCommit / Assigned / Lost` 4 단계 hook 모두 메트릭 + 로그.
+  - session/heartbeat/max-poll-interval/max-poll-records 명시 — default 가 운영 표준에서 떨어진 값일 수 있어 *정책의 명시 보호선*.
+- **배경**:
+  - Kafka consumer group 에 인스턴스가 추가/제거되면 partition 재분배 (rebalance) 가 일어난다. 이 동안 처리/commit 의 순서가 깨지면 *중복 처리* (멱등성으로 흡수 가능) 또는 *처리 누락* (auto-commit=true 시) 이 발생.
+  - default `ack-mode=record` 도 listener 메서드 return 직후 자동 ack — 우리 코드처럼 메서드에 `@Transactional` 이 붙은 경우 spring-kafka 의 timing 으로 *대부분* 안전 (트랜잭션 commit 후 return → 그 후 ack). 하지만 *명시* 되지 않은 보장은 사고 회고에서 의심 포인트가 된다.
+  - `MANUAL_IMMEDIATE` + `TransactionTemplate.executeWithoutResult` 패턴은 *코드가 직접 ack 시점을 결정* — 트랜잭션 commit 후 ack 가 *명시* 되어 의심의 여지 없음.
+  - `range` assignor 는 *stop-the-world* — rebalance 동안 모든 consumer 가 partition 을 일단 다 놓고 다시 받는다. 1개 인스턴스 추가에도 전체가 잠깐 멈춤. cooperative-sticky 는 변경된 partition 만 처리해 *정상 인스턴스의 처리는 끊기지 않음* — 운영 표준.
+  - session.timeout (30s) / heartbeat (10s) 의 1/3 규칙: 짧으면 GC pause / 일시 네트워크 끊김에 *오탐 rebalance*, 길면 진짜 죽은 인스턴스의 partition 회수 지연. 30/10 이 균형점.
+  - max-poll-interval (5분) — 한 poll 처리에 가장 오래 걸릴 시간. 이 시간을 넘기면 컨슈머 그룹은 그 인스턴스를 *죽었다고 판단*. 우리 inbox 처리는 빠르지만 (~10ms) DB 일시 정지 / GC pause 도 견디게 5분.
+- **대안**:
+  1. **현재 (`ack-mode=record` + `@Transactional`) 유지** — *대부분* 안전. 명시성이 떨어져 사고 회고에서 의심 포인트.
+  2. **`ack-mode=BATCH`** — poll 의 모든 record 를 받아 batch 단위로 처리/ack. throughput 좋지만 한 record 실패 시 batch 전체의 처리 단위가 복잡 (어디부터 다시? — `BatchListenerFailedException` 의 record index 등). 지금처럼 *record 단위 멱등성* 이 강한 환경에선 굳이.
+  3. **Kafka transactions (transactional.id + read-process-write atomic)** — 가장 강력. read-from-Kafka + write-to-DB + write-to-Kafka 전체가 하나의 atomic 단위. 단 운영 복잡도가 크다 (transactional.id 관리, KIP-447, fencing 의 디테일). 우리는 [ADR-010](#adr-010--kafka-는-idempotent-producer--at-least-once-consumer) 에서 *도메인 자연 키 + UNIQUE 제약* 으로 같은 효과를 얻기로 결정.
+  4. **range assignor 유지** — 단일 인스턴스 환경엔 차이 없음. 멀티 인스턴스 + scale-out / scale-in 잦은 환경에서 stop-the-world 가 누적적 SLO 영향.
+- **결과**:
+  - **commit 시점 명시** — listener 메서드 안에서 `transactionTemplate.executeWithoutResult(...)` 가 정상 return = 트랜잭션 커밋 완료 → 그 후 `acknowledgment.acknowledge()`. 트랜잭션이 throw 하면 ack 호출 자체가 일어나지 않아 spring-kafka 의 `DefaultErrorHandler` 가 retry / DLT 처리.
+  - **rebalance hook 메트릭** — `kafka.consumer.rebalance{group, phase=revoke_before_commit|revoke_after_commit|assign|lost}` 카운터, `kafka.consumer.partitions.assigned{group}` gauge. Grafana 패널 — *rebalance 카운터가 갑자기 증가* = 인스턴스 추가/제거 또는 *오탐* (heartbeat 끊김), `lost` phase 의 카운터가 0 이 아니면 즉시 알람 (heartbeat 가 끊긴 비정상 회수).
+  - **assigned 시점 로그** — 새 partition 의 last committed offset 을 한 줄 로그. 사고 회고에서 "rebalance 후 어느 인스턴스가 어디서 시작했는지" 가 직접 보임.
+  - **cooperative-sticky 의 효과** — 운영 path 에서 1개 인스턴스 추가 시 정상 인스턴스의 partition 처리가 *끊기지 않음*. p99 latency 의 jitter 감소.
+  - **메트릭 회귀** — `kafka.consumer.rebalance.lost` 가 발화하면 `session.timeout` / heartbeat 와 max-poll-interval 의 *재튜닝 신호* (GC pause / 처리 시간 분포 분석 후).
+  - **다음 phase 신호**:
+    1. `BatchListenerFailedException` 기반 batch 모드 도입 — throughput 이 더 필요해질 때.
+    2. Kafka transactions (KIP-447) 로 격상 — read-process-write 전체의 원자성. 운영 복잡도 trade-off 검토 후.
+    3. consumer lag 의 자동 scale-out 신호 (partition lag > N → 인스턴스 추가) — Kafka exporter + HPA.
+
+## ADR-022 — HTTP client retry — exponential backoff + jitter
+
+- **결정**:
+  - order-service 의 `paymentRestClient` / `inventoryRestClient` 에 `RetryInterceptor` 를 등록. transient 오류 (`SocketTimeoutException` / `IOException` / 5xx 응답) 만 retry. 4xx 는 retry 안 함 (client 잘못 — 재시도해도 같은 결과).
+  - backoff 식: `wait = capped × (1 - jitterFactor + 2 × jitterFactor × random())`. capped 는 `min(baseDelay × multiplier^(attempt-1), maxDelay)`. default 는 base=200ms, multiplier=2, max=2000ms, jitterFactor=0.5, max-attempts=3.
+  - interceptor chain 위치 — RetryInterceptor 가 *바깥*, AdaptiveLimiterInterceptor 가 *안쪽*. 매 retry attempt 마다 limiter 의 acquire/release 가 재진입.
+- **배경**:
+  - inter-service HTTP 호출의 transient 오류는 *retry 로 회복* 이 표준. network blip, TCP keepalive 끊김, backend 의 일시 GC pause, 503 (rolling deploy / config reload) — 모두 같은 호출을 잠깐 후 다시 보내면 성공.
+  - 단순 retry 는 *thundering herd* 위험. backend 가 일시 503 으로 다수 호출자 retry 를 동시에 받으면, jitter 없는 순수 exponential backoff 는 모든 호출자가 *같은 시점에* 다시 시도 → backend 회복이 더 느려져 사고가 더 커짐.
+  - jitter 가 시간을 분산. AWS Architecture Blog (2015) "Exponential Backoff And Jitter" 에서 4 가지 형태 비교 — full jitter (0~capped 사이 균일분포), equal jitter (절반 고정 + 절반 random), decorrelated (이전 wait 기반), 그리고 jitter 없음. equal/decorrelated/full 모두 thundering herd 를 거의 같이 잘 차단. 우리는 *equal jitter 의 단순 형태* (capped × (1-f + 2f×rand())) 채택 — 평균 wait 가 capped 와 같아 직관적.
+  - retry 와 adaptive limiter 의 직교성:
+    - **limiter** — *동시성* 을 제어 (지금 진행 중인 호출 수의 상한).
+    - **retry** — *시간 분산* 을 제어 (실패한 호출의 다음 시도 시점).
+    - 둘은 같은 cascade 를 *다른 자리* 에서 차단. 같이 써야 transient 회복 (retry) + cascade 차단 (limiter) 이 동시에 동작.
+  - chain 순서 — Retry 가 바깥. 이렇게 두면 *매 retry 시 limiter 재진입* — backend 가 망가져 limiter 한도가 줄면 retry 도 같이 *입구에서 거절* 됨 (호출 자체가 안 나감). 반대 순서 (limiter 바깥) 면 limiter 가 한 번 acquire 한 슬롯을 retry 가 점유한 채 재시도 → 한도가 retry 시간만큼 묶여 cascade 차단 효과 약화.
+- **대안**:
+  1. **retry 도입 안 함** — transient 오류가 *호출자* 에 그대로 전파. SAGA 보상이 일어나거나 사용자가 재시도. inter-service 호출의 표준에서 멀어짐 — 도입 *기본 위생*.
+  2. **jitter 없는 순수 exponential** — 단일 호출자 환경엔 동일. 실서비스 (다수 호출자) 에선 thundering herd. *반드시* jitter.
+  3. **full jitter** (`wait = rand() × capped`) — 평균 wait 가 capped/2 라 *retry 간격이 더 짧음* → 같은 시간에 더 많은 retry. backend 가 회복 중일 때 추가 압력. equal jitter 가 평균 보존 + 분산 도입의 균형.
+  4. **fixed delay** — 단순. exponential 을 안 쓰면 같은 시점 retry 가 더 많아짐 (wait 가 같으니까). 또 한 번 thundering herd.
+  5. **Resilience4j Retry 의존성 추가** — 검증된 라이브러리. config 풍부. 단 다른 retry 라이브러리 추가는 *concurrency-limits* 와의 chain 시점이 라이브러리에 묶여 자유도 떨어짐. 자체 interceptor 가 *interceptor chain 의 정확한 위치* 와 *limiter 와의 결합* 을 명시 제어.
+  6. **Spring Retry (`@Retryable`)** — 메서드 단위 AOP. interceptor chain 의 안쪽 / 바깥쪽 결정이 어렵고 RestClient interceptor 와 *같은 layer* 에 두기 까다로움.
+- **결과**:
+  - **chain 순서**: `RetryInterceptor (바깥) → AdaptiveLimiterInterceptor (안쪽) → 실 호출`. 매 retry attempt 가 limiter 에 재진입.
+  - **retry 정책**: 5xx, IOException, SocketTimeoutException 만 retry. 4xx 는 즉시 반환. retry 종료 시 마지막 응답 (또는 throw) 을 그대로 호출자에 전파.
+  - **MDC retry-attempt** — attempt > 1 일 때 MDC 에 attempt 번호 set. logback 패턴이 attempt 번호를 함께 찍어 사고 회고에서 "이 호출이 몇 번째 retry 였는지" 가 직접 보임. 첫 attempt 는 unmarked (정상 호출과 구분).
+  - **메트릭** — `http.client.retry{upstream, outcome=retry_5xx|retry_io|retry_timeout|recovered|exhausted_*}` 카운터. *recovered* 가 *retry_*  대비 작으면 retry 가 *대부분 소진* 되고 있음 = backend 가 transient 가 아닌 *지속 장애*. 그때는 retry 가 backend 에 추가 압력만 주므로 일시 비활성 검토.
+  - **연계 한계** — limiter 는 *RTT 측정* 으로 한도 조절. retry 가 wait 시간 동안 thread/connection 을 잡고 있지 않으므로 (sleep 만) RTT 분석에는 retry 시간이 안 섞임. 즉 limiter 알고리즘의 정확성은 유지.
+  - **enabled 토글** — `mini-shop.retry.enabled=false` 로 즉시 비활성화. 운영 사고 시 retry 가 backend 추가 압력의 *원인 의심* 을 받을 때 빠르게 끌 수 있음.
+  - **다음 phase 신호**:
+    1. payment-service 의 PgClient 에도 같은 패턴 도입 (외부 PG 호출의 transient 오류는 가장 빈번한 자리). 본 라운드는 inter-service 우선.
+    2. retry 횟수 / 패턴 분석에서 *특정 endpoint* 만 retry 가 많으면 *그 endpoint 가 transient 가 아닌 잘못된 input* 신호 — 4xx 분류 점검.
+    3. `Retry-After` 응답 헤더 존중 — 5xx 응답에 backend 가 명시한 wait 시간이 있다면 우리 backoff 계산을 override (RFC 7231).
+    4. `decorrelated jitter` 로 격상 검토 — 매우 높은 동시성에서 equal jitter 보다 thundering herd 차단이 약간 더 좋음 (AWS 비교 그래프). 단 wait 분포 직관성이 떨어짐.
+
 ## ADR-013 — 로그에 식별자 노출 정책 (PII 마스킹)
 
 - **결정**:

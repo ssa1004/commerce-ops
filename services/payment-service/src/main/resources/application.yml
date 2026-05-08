@@ -13,6 +13,25 @@ spring:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/paymentdb
     username: ${DB_USER:mini}
     password: ${DB_PASSWORD:mini}
+    # HikariCP 명시 튜닝 — Spring Boot default 는 데모 기준이라 운영에서는 명시. payment 는 PG 호출
+    # 동안 트랜잭션을 *유지* 한다 (in-doubt 윈도우의 일반적 형태) — 평균 트랜잭션 길이 ~250ms 로
+    # 가장 길다. 목표 RPS ~50 → Little's law = 12.5, 여유 마진을 트랜잭션 시간이 아닌 *connection 점유
+    # 시간 변동* 에 둔다 (PG 가 일시 느려져도 견디게) → 12.
+    # ADR-020 참조.
+    hikari:
+      pool-name: paymentHikariPool
+      maximum-pool-size: ${DB_POOL_MAX:12}
+      minimum-idle: ${DB_POOL_MIN_IDLE:3}
+      # connection-timeout: 2s — 풀이 가득 찼을 때 대기 한도. PG 호출 자체가 read-timeout 5s 라
+      # 호출자 timeout 보다 짧게 잡아 *DB 풀에서* 대기하다 결제 timeout 이 동시에 터지는 시나리오를
+      # 분리. 짧으면 풀 saturation 이 *DB 503* 으로 빠르게 표면화.
+      connection-timeout: ${DB_CONN_TIMEOUT_MS:2000}
+      validation-timeout: ${DB_VALIDATION_TIMEOUT_MS:2000}
+      max-lifetime: ${DB_MAX_LIFETIME_MS:1740000}
+      idle-timeout: ${DB_IDLE_TIMEOUT_MS:600000}
+      # leak-detection-threshold: 20s — payment 는 PG 호출 도중 connection 을 들고 있으니 더 짧게.
+      # 정상 트랜잭션은 ~250ms 내 끝나며, 20s 가 걸리면 PG 가 망가졌거나 try-finally 누락 의심.
+      leak-detection-threshold: ${DB_LEAK_DETECTION_MS:20000}
   jpa:
     hibernate:
       ddl-auto: validate

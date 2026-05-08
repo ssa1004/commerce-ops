@@ -10,7 +10,11 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.annotation.EnableKafka;
+import org.springframework.kafka.config.ContainerCustomizer;
+import org.springframework.kafka.config.KafkaListenerContainerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.listener.AbstractMessageListenerContainer;
+import org.springframework.kafka.listener.ConcurrentMessageListenerContainer;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -54,5 +58,26 @@ public class KafkaConfig {
                         record.topic(), deliveryAttempt,
                         ex == null ? "?" : ex.getClass().getSimpleName()));
         return handler;
+    }
+
+    /**
+     * 모든 {@link ConcurrentMessageListenerContainer} 에 {@link OrderConsumerRebalanceListener}
+     * 를 자동 부착하는 커스터마이저. Spring Boot 가 제공하는 default container factory 를 그대로
+     * 쓰되 (ack-mode, deserializer 등 기본 자동 구성 유지), rebalance hook 만 우리 구현으로 갈아끼운다.
+     *
+     * <p>group.id 가 없는 (테스트용) container 는 group="(unknown)" 으로 들어가지만, 실제 listener
+     * 는 모두 {@code @KafkaListener(groupId=...)} 로 명시 — 운영 path 에서는 정상 group 명이 찍힌다.
+     *
+     * <p>ADR-021 참조.
+     */
+    @Bean
+    ContainerCustomizer<String, String, ConcurrentMessageListenerContainer<String, String>> rebalanceListenerCustomizer(
+            MeterRegistry meterRegistry) {
+        return container -> {
+            String groupId = container.getContainerProperties().getGroupId();
+            String groupTag = (groupId == null || groupId.isBlank()) ? "(unknown)" : groupId;
+            container.getContainerProperties().setConsumerRebalanceListener(
+                    new OrderConsumerRebalanceListener(groupTag, meterRegistry));
+        };
     }
 }

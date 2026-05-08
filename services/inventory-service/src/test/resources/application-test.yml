@@ -2,3 +2,10 @@ spring:
   kafka:
     listener:
       auto-startup: false
+  # 테스트는 @Transactional 의 method-scope 트랜잭션이 길게 잡힐 수 있어 leak detection 비활성.
+  # ADR-020 참조.
+  datasource:
+    hikari:
+      leak-detection-threshold: 0
+      maximum-pool-size: 5
+      minimum-idle: 1

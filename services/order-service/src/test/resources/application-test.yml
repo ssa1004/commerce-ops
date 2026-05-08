@@ -9,3 +9,11 @@ spring:
   kafka:
     listener:
       auto-startup: false
+  # 테스트 트랜잭션은 @Transactional 로 인해 메서드 종료까지 connection 을 들고 있을 수 있어
+  # 운영용 leak-detection 30s 를 그대로 두면 false positive 가 빈발. 테스트에선 비활성.
+  # ADR-020 참조.
+  datasource:
+    hikari:
+      leak-detection-threshold: 0
+      maximum-pool-size: 5
+      minimum-idle: 1
