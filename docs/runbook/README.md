@@ -43,6 +43,9 @@ Phase 3 Step 2 — slow-query-detector 적용 후 추가:
 Phase 3 Step 3 — tail-based sampling 적용 후 추가:
 - [tail-sampling-buffer-saturation](tail-sampling-buffer-saturation.md) — OTel Collector tail_sampling 버퍼가 한도에 닿아 trace 가 의사결정 전에 drop 됨
 
+Phase 3 Step 4 — JFR continuous profiling 적용 후 추가:
+- [jfr-analysis](jfr-analysis.md) — runbook 이 아닌 *운영자 가이드* — JFR chunk 를 어떻게 가져오고 (JMC / async-profiler / programmatic) 어떻게 분석하는지
+
 ## 다음에 추가할 후보
 
 - payment 응답시간 p99 high (mock-pg 의존)
