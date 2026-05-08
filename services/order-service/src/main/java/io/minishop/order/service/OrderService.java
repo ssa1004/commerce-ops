@@ -12,10 +12,14 @@ import io.minishop.order.exception.OrderNotFoundException;
 import io.minishop.order.kafka.dto.OrderEvent;
 import io.minishop.order.outbox.OutboxService;
 import io.minishop.order.repository.OrderRepository;
+import io.minishop.order.saga.OrderSagaCoordinator;
+import io.minishop.order.saga.OrderSagaEvents;
+import io.minishop.order.saga.OrderSagaStates;
 import io.minishop.order.web.dto.CreateOrderItemRequest;
 import io.minishop.order.web.dto.CreateOrderRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.statemachine.StateMachine;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -50,19 +54,22 @@ public class OrderService {
     private final OutboxService outboxService;
     private final TransactionTemplate tx;
     private final MeterRegistry meterRegistry;
+    private final OrderSagaCoordinator saga;
 
     public OrderService(OrderRepository orderRepository,
                         InventoryClient inventoryClient,
                         PaymentClient paymentClient,
                         OutboxService outboxService,
                         TransactionTemplate transactionTemplate,
-                        MeterRegistry meterRegistry) {
+                        MeterRegistry meterRegistry,
+                        OrderSagaCoordinator saga) {
         this.orderRepository = orderRepository;
         this.inventoryClient = inventoryClient;
         this.paymentClient = paymentClient;
         this.outboxService = outboxService;
         this.tx = transactionTemplate;
         this.meterRegistry = meterRegistry;
+        this.saga = saga;
     }
 
     public Order create(CreateOrderRequest request) {
@@ -77,47 +84,73 @@ public class OrderService {
             return saved;
         });
 
+        // SAGA shadow run — 기존 동기 흐름과 *병행* 으로 모델을 진행. 결정 일관성을 메트릭으로
+        // 비교 (consistency=ok|mismatch). 모델 자체에 버그가 있어도 운영 트래픽엔 영향 없게
+        // shadow 로 시작, 안정화되면 enforce 모드로 격상.
+        StateMachine<OrderSagaStates, OrderSagaEvents> machine = saga.begin(order.getId());
+
         List<ReservedItem> reserved = new ArrayList<>();
         try {
             reserveAll(order, request.items(), reserved);
+            saga.apply(machine, OrderSagaEvents.INVENTORY_OK);
+            // RESERVED → CHARGING 진입 트리거. 결제 응답 (PAYMENT_OK / PAYMENT_DECLINED) 와는
+            // 별도 이벤트로 분리해 모델이 결정적이게 (source 상태 + 이벤트로 transition 이 유일).
+            saga.apply(machine, OrderSagaEvents.PAYMENT_CHARGE_STARTED);
             PaymentClient.PaymentResult payment = paymentClient.charge(
                     order.getId(), order.getUserId(), order.getTotalAmount()
             );
             if (payment.isSuccess()) {
+                saga.apply(machine, OrderSagaEvents.PAYMENT_OK);
                 markPaid(order.getId());
+                saga.assertConsistent(machine, null, true);
                 recordOutcome(sample, "paid");
                 return reload(order.getId());
             }
             log.info("Payment declined for order {}: {}", order.getId(), payment.failureReason());
+            saga.apply(machine, OrderSagaEvents.PAYMENT_DECLINED);
             compensate(order.getId(), reserved);
+            saga.apply(machine, OrderSagaEvents.COMPENSATION_DONE);
             markFailed(order.getId(), "PAYMENT_DECLINED: " + payment.failureReason());
+            saga.assertConsistent(machine, Outcome.PAYMENT_DECLINED, false);
             recordOutcome(sample, "payment_declined");
             throw new OrchestrationException(Outcome.PAYMENT_DECLINED, reload(order.getId()),
                     "Payment declined: " + payment.failureReason());
 
         } catch (InventoryClient.OutOfStockException e) {
+            // 재고 부족 — SAGA 상 INVENTORY_RESERVING 단계 → FAILED (보상 없이 종결).
+            saga.apply(machine, OrderSagaEvents.INVENTORY_OUT_OF_STOCK);
             compensate(order.getId(), reserved);
             markFailed(order.getId(), "OUT_OF_STOCK: " + e.getMessage());
+            saga.assertConsistent(machine, Outcome.OUT_OF_STOCK, false);
             recordOutcome(sample, "out_of_stock");
             throw new OrchestrationException(Outcome.OUT_OF_STOCK, reload(order.getId()), e.getMessage());
 
         } catch (InventoryClient.InventoryInfraException e) {
+            saga.apply(machine, OrderSagaEvents.INVENTORY_INFRA_ERROR);
             compensate(order.getId(), reserved);
+            saga.apply(machine, OrderSagaEvents.COMPENSATION_DONE);
             markFailed(order.getId(), "INVENTORY_INFRA: " + e.getMessage());
+            saga.assertConsistent(machine, Outcome.INVENTORY_INFRA, false);
             recordOutcome(sample, "inventory_infra");
             throw new OrchestrationException(Outcome.INVENTORY_INFRA, reload(order.getId()), e.getMessage());
 
         } catch (PaymentClient.PaymentInfraException e) {
+            saga.apply(machine, OrderSagaEvents.PAYMENT_INFRA_ERROR);
             compensate(order.getId(), reserved);
+            saga.apply(machine, OrderSagaEvents.COMPENSATION_DONE);
             markFailed(order.getId(), "PAYMENT_INFRA: " + e.getMessage());
+            saga.assertConsistent(machine, Outcome.PAYMENT_INFRA, false);
             recordOutcome(sample, "payment_infra");
             throw new OrchestrationException(Outcome.PAYMENT_INFRA, reload(order.getId()), e.getMessage());
 
         } catch (LimitExceededException e) {
             // adaptive limiter 가 inventory / payment 호출을 즉시 거절 — backend cascade 차단.
             // 우리는 *호출 자체를 안 한* 상태이므로 보상은 reserved 까지만 (이미 잡힌 재고 release).
+            saga.apply(machine, OrderSagaEvents.UPSTREAM_LIMITED);
             compensate(order.getId(), reserved);
+            saga.apply(machine, OrderSagaEvents.COMPENSATION_DONE);
             markFailed(order.getId(), "UPSTREAM_LIMITED[" + e.getUpstream() + "]: " + e.getMessage());
+            saga.assertConsistent(machine, Outcome.UPSTREAM_LIMITED, false);
             recordOutcome(sample, "upstream_limited");
             throw new OrchestrationException(Outcome.UPSTREAM_LIMITED, reload(order.getId()),
                     "upstream limited: " + e.getUpstream());
