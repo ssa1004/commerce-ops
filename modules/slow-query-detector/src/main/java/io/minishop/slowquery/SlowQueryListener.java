@@ -28,12 +28,25 @@ public class SlowQueryListener implements QueryExecutionListener {
 
     private final Counter slowQueryCounter;
     private final Counter nPlusOneCounter;
+    // 모든 쿼리마다 호출되는 hot path. Timer.builder(...).register(...) 를 매번 부르지 않도록
+    // 동일한 (이름, 태그) 조합은 미리 한 번만 만들어 둔다 — Micrometer 가 내부 캐시를 두긴 하지만,
+    // 빌더 객체 / 태그 리스트 / lookup 비용이 매 호출마다 들어가는 건 그대로라 측정 가능한 차이가 난다.
+    private final Timer queryTimerOk;
+    private final Timer queryTimerSlow;
 
     public SlowQueryListener(SlowQueryDetectorProperties props, MeterRegistry meterRegistry) {
         this.props = props;
         this.meterRegistry = meterRegistry;
         this.slowQueryCounter = meterRegistry.counter("slow_query_total");
         this.nPlusOneCounter = meterRegistry.counter("n_plus_one_total");
+        this.queryTimerOk = Timer.builder("query_execution_seconds")
+                .tag("outcome", "ok")
+                .publishPercentileHistogram()
+                .register(meterRegistry);
+        this.queryTimerSlow = Timer.builder("query_execution_seconds")
+                .tag("outcome", "slow")
+                .publishPercentileHistogram()
+                .register(meterRegistry);
     }
 
     @Override
@@ -69,11 +82,7 @@ public class SlowQueryListener implements QueryExecutionListener {
     }
 
     private void recordTimer(long elapsedMs, boolean slow) {
-        Timer.builder("query_execution_seconds")
-                .tag("outcome", slow ? "slow" : "ok")
-                .publishPercentileHistogram()
-                .register(meterRegistry)
-                .record(elapsedMs, TimeUnit.MILLISECONDS);
+        (slow ? queryTimerSlow : queryTimerOk).record(elapsedMs, TimeUnit.MILLISECONDS);
     }
 
     private void logSlow(String sql, long elapsedMs) {

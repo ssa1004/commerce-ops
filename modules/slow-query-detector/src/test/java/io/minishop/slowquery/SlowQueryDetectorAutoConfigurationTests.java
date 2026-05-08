@@ -9,6 +9,8 @@ import org.springframework.boot.actuate.autoconfigure.metrics.export.simple.Simp
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -89,6 +91,39 @@ class SlowQueryDetectorAutoConfigurationTests {
 					assertThat(ctx).hasSingleBean(MeterRegistry.class);
 					assertThat(ctx).hasSingleBean(SlowQueryListener.class);
 					assertThat(ctx.getBean(DataSource.class)).isInstanceOf(ProxyDataSource.class);
+				});
+	}
+
+	/**
+	 * non-web 컨텍스트에선 NPlusOneRequestFilter 등록을 시도하지 않아야 한다 (servlet API 가
+	 * 없는 환경에서 ClassNotFoundException 으로 컨텍스트 시작이 깨지면 안 된다는 회귀 방지).
+	 */
+	@Test
+	void doesNotRegisterServletFilterInNonWebContext() {
+		runner.run(ctx ->
+				assertThat(ctx).doesNotHaveBean(FilterRegistrationBean.class)
+		);
+	}
+
+	/**
+	 * servlet web 컨텍스트에서는 N+1 ThreadLocal 누수를 막는 필터가 자동으로 등록되어야 한다.
+	 */
+	@Test
+	void registersServletFilterInWebContext() {
+		new WebApplicationContextRunner()
+				.withConfiguration(AutoConfigurations.of(
+						DataSourceAutoConfiguration.class,
+						SlowQueryDetectorAutoConfiguration.class
+				))
+				.withUserConfiguration(MeterRegistryConfig.class)
+				.withPropertyValues(
+						"spring.datasource.url=jdbc:h2:mem:slowq3;DB_CLOSE_DELAY=-1",
+						"spring.datasource.driver-class-name=org.h2.Driver"
+				)
+				.run(ctx -> {
+					assertThat(ctx).hasSingleBean(FilterRegistrationBean.class);
+					FilterRegistrationBean<?> reg = ctx.getBean(FilterRegistrationBean.class);
+					assertThat(reg.getFilter()).isInstanceOf(NPlusOneRequestFilter.class);
 				});
 	}
 
