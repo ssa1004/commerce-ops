@@ -13,6 +13,23 @@ spring:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/inventorydb
     username: ${DB_USER:mini}
     password: ${DB_PASSWORD:mini}
+    # HikariCP 명시 튜닝 — Spring Boot default (max=10) 는 데모 기준이라 운영에서는 RPS / 트랜잭션
+    # 길이를 보고 결정해야 한다. inventory 는 Redis lock 으로 임계 구간이 짧고 (~30ms) 트랜잭션도
+    # UPDATE 한두 건이라 평균 ~20ms. 목표 RPS ~300 → Little's law = 6, 여유 마진 1.5x → 10. 다만
+    # 동시 결제 spike 에 burst 를 흡수해야 하므로 +5 → 15.
+    # ADR-020 참조.
+    hikari:
+      pool-name: inventoryHikariPool
+      maximum-pool-size: ${DB_POOL_MAX:15}
+      minimum-idle: ${DB_POOL_MIN_IDLE:3}
+      connection-timeout: ${DB_CONN_TIMEOUT_MS:3000}
+      validation-timeout: ${DB_VALIDATION_TIMEOUT_MS:2000}
+      # max-lifetime: 29분 — 28~32분 범위에서 pgbouncer / RDS Proxy idle 종료보다 짧게.
+      max-lifetime: ${DB_MAX_LIFETIME_MS:1740000}
+      idle-timeout: ${DB_IDLE_TIMEOUT_MS:600000}
+      # leak-detection-threshold: 30s. Redis lock + DB 트랜잭션 결합 패턴에서 lock 만 잡고
+      # connection 을 안 돌려주는 경로가 생기면 즉시 stack trace 로 잡힘.
+      leak-detection-threshold: ${DB_LEAK_DETECTION_MS:30000}
   jpa:
     hibernate:
       ddl-auto: validate

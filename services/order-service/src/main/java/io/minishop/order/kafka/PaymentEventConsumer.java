@@ -10,8 +10,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Component
 public class PaymentEventConsumer {
@@ -21,31 +22,45 @@ public class PaymentEventConsumer {
     private final PaymentInboxRepository repository;
     private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
+    private final TransactionTemplate transactionTemplate;
 
-    public PaymentEventConsumer(PaymentInboxRepository repository, ObjectMapper objectMapper, MeterRegistry meterRegistry) {
+    public PaymentEventConsumer(PaymentInboxRepository repository, ObjectMapper objectMapper,
+                                MeterRegistry meterRegistry, TransactionTemplate transactionTemplate) {
         this.repository = repository;
         this.objectMapper = objectMapper;
         this.meterRegistry = meterRegistry;
+        this.transactionTemplate = transactionTemplate;
     }
 
+    /**
+     * payment.events consume → inbox 저장. {@link InventoryEventConsumer} 의 같은 패턴 주석 참고
+     * (트랜잭션 커밋 후 ack 명시).
+     */
     @KafkaListener(topics = "payment.events", groupId = "order-service.payment-inbox")
-    @Transactional
-    public void onMessage(String payload) {
+    public void onMessage(String payload, Acknowledgment acknowledgment) {
         InboundPaymentEvent event;
         try {
             event = objectMapper.readValue(payload, InboundPaymentEvent.class);
         } catch (Exception e) {
             log.error("Cannot parse payment event payload, skipping. raw={}", payload, e);
             meterRegistry.counter("inbox.consume", Tags.of("topic", "payment.events", "outcome", "parse_error")).increment();
+            acknowledgment.acknowledge();
             return;
         }
 
         if (event.paymentId() == null) {
             log.warn("payment event without paymentId, skipping: {}", event);
             meterRegistry.counter("inbox.consume", Tags.of("topic", "payment.events", "outcome", "missing_key")).increment();
+            acknowledgment.acknowledge();
             return;
         }
 
+        InboundPaymentEvent finalEvent = event;
+        transactionTemplate.executeWithoutResult(status -> persistInbox(finalEvent, payload));
+        acknowledgment.acknowledge();
+    }
+
+    private void persistInbox(InboundPaymentEvent event, String payload) {
         // 멱등성: UNIQUE(payment_id) 제약 덕분에 같은 이벤트가 두 번 와도 한 행만 남는다.
         // (Kafka 는 at-least-once 라 동일 메시지가 가끔 중복 도달 — 그걸 여기서 흡수)
         if (repository.existsByPaymentId(event.paymentId())) {
