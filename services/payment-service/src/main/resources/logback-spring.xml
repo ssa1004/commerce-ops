@@ -2,9 +2,11 @@
 <configuration>
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
 
+    <!-- userId 슬롯은 ADR-013 마스킹 정책 (LogIds.userId) 을 거친 해시값이 들어가는 곳.
+         평문 userId 를 직접 MDC 에 넣으면 안 된다. -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>%d{ISO8601} %-5level [%X{trace_id:-}/%X{span_id:-}] %thread %logger{36} - %msg%n</pattern>
+            <pattern>%d{ISO8601} %-5level [%X{trace_id:-}/%X{span_id:-}] [%X{userId:-}] %thread %logger{36} - %msg%n</pattern>
         </encoder>
     </appender>
 
