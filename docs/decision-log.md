@@ -169,6 +169,70 @@
   - **다음 phase 신호**: 단일 collector 가 saturation 에 닿는 순간 = 2계층 (loadbalancing collector → tail_sampling pool) 으로 가야 할 때. tail_sampling 은 *동일 trace 의 모든 span 이 같은 collector* 로 라우팅돼야 동작하므로 trace_id 기반 routing 이 필수.
   - runbook: [tail-sampling-buffer-saturation](../docs/runbook/tail-sampling-buffer-saturation.md).
 
+## ADR-017 — OTel Collector 2-tier (loadbalancing → tail_sampling pool)
+
+- **결정**: 단일 collector 의 후속 단계로 *agent → backend pool* 의 2-tier 옵션을 둔다. agent 는 어플리케이션의 OTLP 진입점만 책임, `loadbalancing` exporter (`routing_key=traceID`) 로 backend pool 에 분배. 실제 tail_sampling 은 backend pool 에서. compose override (`docker-compose.collector-2tier.yml`) 로 2-tier 토글, 검증 스크립트 (`verify-2tier.sh`) 로 *같은 trace 의 모든 span 이 같은 backend 로 가는지* 회귀 테스트.
+- **배경**:
+  - tail_sampling 은 *한 trace 의 모든 span 이 같은 collector 인스턴스 메모리에 있어야* 의사결정이 정확하다 (error/5xx/latency policy 의 OR 결합 — 한 결과라도 누락되면 잘못된 drop). [ADR-014](#adr-014--tail-based-sampling-otel-collector) 가 단일 collector 전제로 도입됐고, "단일 collector saturation = 2-tier 로 가야 할 때" 를 후속 신호로 명시했다.
+  - 단순 round-robin 으로 horizontal scale 하면 같은 trace 의 span 이 여러 인스턴스로 흩어진다 — 한쪽엔 root span, 다른 쪽엔 ERROR span. 양쪽 다 *자기 buffer 만 보고 결정* 해서 양쪽 다 drop 되거나, error 신호 없는 root 만 보존되는 어처구니없는 결과 (head-based 와 동급으로 망가짐).
+  - `loadbalancing` exporter 의 `routing_key=traceID` 는 consistent hashing 으로 *같은 traceID = 같은 backend 인스턴스* 를 보장. backend pool 에 인스턴스가 추가/제거돼도 대다수 trace 의 라우팅이 유지 (rendezvous hashing 변형 — k8s 환경의 endpoint 변동에 강함).
+  - 운영 표준: AWS Distro for OpenTelemetry 의 reference 아키텍처, Honeycomb 의 *refinery* (같은 모양의 다른 구현), Datadog 의 *load-balancing exporter* — 모두 같은 패턴.
+- **대안**:
+  1. **단일 collector 만 강화 (vertical scale)** — 한 인스턴스의 메모리/CPU 를 키우는 방식. 한계 분명: collector 한 대가 죽으면 *모든* trace 가 손실, 단일 인스턴스의 throughput 상한 (~100k span/s) 에 닿으면 더 늘릴 길이 없음.
+  2. **앞단 LB + round-robin** — 가장 단순. 위에 적은 *trace 분산* 문제로 tail_sampling 이 깨짐. 명백히 부적격.
+  3. **SDK 단의 head-based 고정** — 비용 낮지만 [ADR-014](#adr-014--tail-based-sampling-otel-collector) 가 거부한 이유 그대로 (error/slow 신호 손실).
+  4. **이미 1-tier 로 충분, 2-tier 는 미실시** — 데모 환경엔 충분하지만 *후속 phase 의 길* 을 닫는 결정. 현재 단계에서는 *옵션* 으로만 둬, 부담 없이 토글 가능하게.
+- **결과**:
+  - **agent 의 책임 분리** — agent 는 trace/metric/log 수신 + trace 만 backend pool 에 분배. metric/log 는 본인이 직접 Prometheus/Loki 로 보내 hop 절감 (trace 처럼 *완전한 단위 의사결정* 이 필요 없음).
+  - **backend 의 책임 단일화** — tail_sampling + Tempo export 만. config 가 단순, 새 backend 인스턴스 추가가 쉬움 (config 파일 동일).
+  - **resolver 선택** — docker-compose 는 `static` (compose 가 만든 컨테이너 이름), k8s 는 `dns` (headless service 의 endpoint slice). 본 단계는 static 으로 충분, k8s phase 에서 dns 로 전환.
+  - **검증 스크립트** — `verify-2tier.sh` 가 100 trace 를 흘려보내고 각 trace 의 모든 span 이 같은 `otel.backend.id` 를 가지는지 확인. routing_key 가 깨지는 회귀를 즉시 잡는 안전망. CI 에서 docker-compose-action 으로 자동 실행 가능.
+  - **메모리 분산** — backend N 개로 늘리면 한 인스턴스가 들고 있어야 할 trace 수가 ~1/N (consistent hashing 분포 균일 가정). 단일 collector OOM 위험을 N 배 늦출 수 있는 정량적 이득.
+  - **다음 phase 신호**: (a) backend pool 의 자동 scale (HPA + endpoint slice + dns resolver 자동 갱신) — k8s phase 에서. (b) tail_sampling 결과 자체의 metrics 를 backend instance 별로 분리해 *consistent hashing 분포가 진짜 균일한지* 측정. (c) `routing_key=service` 등 다른 라우팅 키 검토 — 도메인 레벨 격리가 필요한 multi-tenant 시나리오.
+
+## ADR-018 — JFR chunk 의 원격 (S3/MinIO) 자동 업로드
+
+- **결정**: `jfr-recorder-starter` 에 `JfrChunkUploader` 인터페이스 + `S3JfrChunkUploader` 구현을 추가. Recorder 의 rollover 시점에 비동기 업로드 task 를 큐에 넣고, 업로드 자체 실패가 다음 chunk 생성을 막지 않게 격리. `/actuator/jfr` 응답에 local + remote chunks 모두 노출. 기본 disable, 운영 환경에서만 enable.
+- **배경**:
+  - [ADR-015](#adr-015--jfr-continuous-profiling-을-항상-켜둔다) 의 *다음 phase 신호* 첫 번째 항목 — chunk 가 디스크에만 있으면 컨테이너가 죽거나 노드가 빠지면 같이 사라진다. 사고 직전 (process 가 죽기 직전) 의 chunk 가 *가장 가치 있는 데이터* 인데, 디스크 전용 보존은 그걸 가장 못 보존하는 구조다.
+  - 운영 표준 (Datadog Continuous Profiler / NHN APM) 은 *각 인스턴스의 agent 가 백엔드로 즉시 업로드* — 우리는 자체 운영을 가정하므로 S3 호환 (AWS S3 / MinIO / R2 / Ceph) 이 가장 자연스러운 자리. 한 번 적재하면 lifecycle 정책 (Glacier 이관, 90일 만료 등) 으로 비용도 통제됨.
+  - 업로드를 동기 (rollover 가 끝나기 전에 업로드 완료 대기) 로 두면 다음 chunk 의 시작이 늦어진다 — 데이터 *연속성* 이 깨지는 위험. 비동기 single-thread executor 가 적절 — chunk 가 5분에 1개라 직렬로도 충분, 동시 실행으로 NIC/메모리를 점유하지 않음.
+- **대안**:
+  1. **모든 chunk 업로드** (현 결정) vs **error window 의 chunk 만 업로드** — 후자는 비용 낮지만 *어떤 chunk 가 error window 의 것인지* 를 *나중에* 알 수 없는 게 본질적 모순 (사고는 *예측 불가*). chunk 일단 다 올리고 retention 으로 비용 통제하는 편이 안전.
+  2. **OTel profile signal (alpha) 로 직접 export** — 표준 진행 중이지만 도구 ecosystem (JMC / async-profiler) 이 아직 file 기반. 시기상조.
+  3. **agent 사이드카로 분리** — k8s 환경 표준이지만 docker-compose 데모/단일 인스턴스에선 운영 부담 큼. 본 모듈은 *프로세스 안에서 관리* 가 더 단순.
+  4. **retry queue 로 실패 chunk 재업로드** — 검토했으나 미채택. 실패 추적용 별도 디스크 큐가 디스크를 차게 만드는 위험이 있고, 디스크의 retention 보유분이 살아있어 *다음 사이클 직접 호출* 으로도 충분 (운영자 수동). 단순 idempotent 가 안전.
+- **결과**:
+  - **key 구조** — `{prefix}/{podId}/{yyyy/MM/dd}/HHmmss-filename.jfr`. 시간 prefix 로 lifecycle 정책 적용이 쉽고, podId 로 같은 deployment 의 인스턴스 충돌 차단.
+  - **uploader 추상화** — `JfrChunkUploader` 인터페이스 + `Noop` 폴백. AWS SDK 가 classpath 에 없으면 자동 noop (의존성 부재로 사용자 앱이 깨지지 않게). 사용자가 직접 `JfrChunkUploader` bean 을 정의하면 자동 등록을 건너뜀 (GCS / Azure Blob 등 커스텀 backend).
+  - **PII 보호** — [ADR-015](#adr-015--jfr-continuous-profiling-을-항상-켜둔다) 의 `mask-sensitive-events` 가 *발생 시점* 에 `jdk.SocketRead/Write` / `jdk.FileRead/Write` 를 거른다. chunk 자체에 PII 가 안 들어가는 상태로 업로드 — 그 후의 권한 모델은 S3 의 bucket policy / IAM 으로.
+  - **자격증명 정책** — `accessKey/secretKey` 는 dev/local 전용. 운영은 IAM role + `DefaultCredentialsProvider` chain (정적 키가 비어 있을 때 자동 fallback). 정적 키를 운영에 두면 안 되는 가드.
+  - **메트릭** — `jfr.upload.events{backend, outcome=ok|error|list_error}` 카운터 + `jfr.upload.duration` timer. P2 알람으로 *업로드 실패율* 모니터링 가능.
+  - **ad-hoc dump 의 업로드** — 별도 토글 (`upload-ad-hoc-dumps`). 기본 disable — 운영자가 의도적으로 만든 단발성 산출물은 즉시 분석에 쓰는 게 보통이라 굳이 원격 보존 불필요.
+  - **다음 phase 신호**: (a) chunk metadata 에 `incident_id` 를 추가해 alertmanager 가 발화한 사고와 chunk 를 결합 (사고 → S3 query). (b) 업로드 실패 retry queue (디스크 백업 큐 + exponential backoff). (c) S3 bucket policy 자동화 (lifecycle / KMS 암호화 / public-access-block). (d) MinIO 컨테이너를 데모 compose 에 옵션으로 추가 (현재는 dev 기본 disable).
+
+## ADR-019 — OrderSAGA 를 Spring StateMachine 으로 모델링 (shadow → enforce 단계 도입)
+
+- **결정**: 기존 `OrderService` 의 if/else SAGA 흐름을 *그대로 유지* 한 채, `OrderSagaConfig` (Spring StateMachine 의 `EnumStateMachineConfigurerAdapter`) 로 같은 흐름의 *명시 모델* 을 만든다. `OrderSagaCoordinator` 가 OrderService 와 *병행* (shadow) 으로 머신을 진행시키며, 결정 일관성을 `order.saga.consistency{result=ok|mismatch}` 카운터로 비교. enforce 모드 토글 (`app.saga.machine.enforce=true`) 로 mismatch 가 즉시 예외가 되어 CI/staging 에서 모델 회귀를 잡는다. 본 phase 는 in-memory persistence — 진실의 원천은 여전히 OrderService.
+- **배경**:
+  - SAGA 의 분기가 5개 (정상 / OUT_OF_STOCK / INVENTORY_INFRA / PAYMENT_DECLINED / PAYMENT_INFRA / UPSTREAM_LIMITED) 로 늘어나면서 보상 (compensation) 의 *어디서 어디로* 가 if/else 코드 곳곳에 흩어진다. 새 분기 추가 (예: 부분 결제, partial refund) 가 어려워지는 신호.
+  - StateMachine 으로 옮기면: (a) 상태 전이가 *데이터* (config) 로 표현 → 그래프 시각화 가능 (Spring StateMachine 의 graph viewer 활용), (b) 가드/액션이 *명시 컴포넌트* — 단위 테스트가 쉬움, (c) 새 분기가 *config 한 곳* 의 추가로 끝남.
+  - 동시에 *진실의 원천* 을 갑자기 모델로 옮기면 위험 — 기존 outbox / inbox / 멱등성 로직과 상호작용이 검증 안 됨. *shadow* 로 시작해 메트릭으로 검증한 뒤 격상하는 점진 도입이 안전.
+- **대안**:
+  1. **StateMachine 도입 안 함, if/else 유지** — 분기 5개 단계는 견딜만하지만, 6개~8개로 가면 코드 흐름이 뒤엉킴. 후속의 *부분 결제 / 부분 환불 / 환불 보상* 시나리오를 위해서는 미리 모델링.
+  2. **자체 enum 기반 작은 state machine** — Spring StateMachine 의존성을 안 들여도 됨. 그러나 persistence (StateMachinePersister), 가드/액션 분리, listener / pre-/post-action interceptor 같은 *주변 인프라* 를 다시 만들어야 함. 운영 부담.
+  3. **즉시 진실의 원천을 StateMachine 으로** — 기존 outbox / 멱등성 로직 손대야 하고 회귀 위험 큼. shadow 단계 없이 가는 건 비싼 사고 가능성.
+  4. **choreography (각 서비스가 이벤트만 듣고 자기 일을 하는 구조) 로 전환** — Phase 2 Step 3c 의 진짜 목표. 그러나 그건 *동기 흐름 자체를 비동기로* 바꾸는 것이고, 본 결정은 *현재 흐름의 모델화*. 두 결정이 직교 (orthogonal) — 모델이 잘 잡혀 있으면 choreography 전환의 전후 비교도 같은 모델로 검증 가능.
+- **결과**:
+  - **상태 enum 분리** — `OrderSagaStates` (DRAFT / INVENTORY_RESERVING / INVENTORY_RESERVED / PAYMENT_CHARGING / COMPENSATING / PAID / FAILED) 가 도메인 enum (`OrderStatus`) 보다 *세분화*. 도메인 enum 은 외부 노출용 (마이그레이션 비용 큼) 이라 그대로 두고, SAGA 진행 표현은 별도 enum.
+  - **이벤트 분리** — INVENTORY_OUT_OF_STOCK (비즈니스 실패) vs INVENTORY_INFRA_ERROR (인프라 장애) 를 분리. 보상 정책 (전자는 보상 불필요, 후자는 부분 잡힘 가능 → 보상 필요) 이 모델 레벨에서 다름. UPSTREAM_LIMITED 도 별도 이벤트로 — adaptive limiter 가 호출 자체를 거절한 케이스 (잡힌 게 없을 수도 있음).
+  - **shadow 모드 (기본)** — `OrderSagaCoordinator.assertConsistent` 가 mismatch 시 메트릭만 올리고 throw 안 함. 모델 자체 버그가 운영 트래픽에 영향 없게.
+  - **enforce 모드 (옵션)** — `app.saga.machine.enforce=true` 시 mismatch 가 즉시 IllegalStateException. CI/staging 에서 켜 회귀 즉시 인지.
+  - **메트릭** — `order.saga.transitions{tag}` (전이 카운터), `order.saga.compensations{reason}` (보상 카운터), `order.saga.outcomes{outcome}` (종결 카운터), `order.saga.consistency{result}` (일관성), `order.saga.unhandled{state, event}` (정의되지 않은 transition).
+  - **persistence 미적용** — 현재 in-memory. 진실의 원천이 OrderService 라 process 재시작 시 SAGA 인스턴스가 사라져도 도메인 정합은 영향 없음. enforce 격상 후에는 `StateMachinePersister` + Postgres 로 전환 필요.
+  - **테스트 14개** — 모델 자체 9개 (5 시나리오 + terminal 보호 + unhandled), coordinator 5개 (shadow / enforce / unhandled / consistency).
+  - **다음 phase 신호**: (a) `StateMachinePersister` + Postgres 로 SAGA 인스턴스 영속화 (재시작 후 복구), (b) 진실의 원천을 OrderService → StateMachine 으로 전환 (enforce 안정화 후), (c) graph viewer 자동화 (CI 에서 SVG 생성해 PR 첨부 — 모델 변경의 시각적 review), (d) Phase 2 Step 3c (choreography) 의 비동기 전환을 같은 모델로 검증.
+
 ## ADR-013 — 로그에 식별자 노출 정책 (PII 마스킹)
 
 - **결정**:

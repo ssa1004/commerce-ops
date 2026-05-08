@@ -128,6 +128,7 @@
 - [x] `decision_wait: 10s`, `num_traces: 50000` — trace 완료 후 결정. memory_limiter 를 파이프라인 맨 앞에 둬 OOM 방지
 - [x] Collector self-metrics (`:8888`) Prometheus 스크레이프 — policy 별 sampled 비율, refused_spans 노출
 - [x] 알람: `tail_sampling_buffer_saturation` (P2) + [런북](docs/runbook/tail-sampling-buffer-saturation.md)
+- [x] 2-tier (loadbalancing → tail_sampling pool) 옵션 — `routing_key=traceID` 로 같은 trace 의 모든 span 을 같은 backend 로. ADR-017 + [verify-2tier.sh](infra/otel-collector/verify-2tier.sh)
 
 ### Step 4 — JFR continuous profiling (`jfr-recorder-starter`) ✅
 - [x] Spring Boot starter 골격 — auto-config (의존성만 추가 시 자동 활성화) + properties + actuator endpoint (ADR-015)
@@ -136,6 +137,7 @@
 - [x] sensitive event filter (`mask-sensitive-events`) — `jdk.SocketRead/Write`, `jdk.FileRead/Write` 발생 시점 disable (PII 보호)
 - [x] 16개 단위 테스트 (속성 / 동작 / 자동설정 wiring)
 - [x] order-service 에 적용 + [JFR 분석 가이드](docs/runbook/jfr-analysis.md) (JMC / async-profiler / programmatic)
+- [x] S3/MinIO 자동 업로드 (`JfrChunkUploader` + `S3JfrChunkUploader`) — chunk 가 떨어진 직후 비동기로 원격 사본. `/actuator/jfr` 응답에 local + remote chunk. ADR-018
 
 ### Step 5 — Adaptive concurrency limiter (Netflix concurrency-limits, Gradient2) ✅
 - [x] Netflix concurrency-limits (`Gradient2Limit` — TCP Vegas 영감, latency 기반 적응) order-service 에 도입 (ADR-016)
@@ -144,6 +146,12 @@
 - [x] 메트릭: `client.concurrency.limit{upstream}`, `client.concurrency.in_flight{upstream}` gauge
 - [x] 18개 단위 테스트 (속성 / limiter 동작 / interceptor / 동시성)
 - [x] 알람: `client_concurrency_limit_saturated` (P2) + [런북](docs/runbook/client-concurrency-limit-saturated.md)
+
+### Step 7 — Spring StateMachine 으로 OrderSAGA 모델링 ✅
+- [x] `OrderSagaStates` / `OrderSagaEvents` / `OrderSagaConfig` (`EnumStateMachineConfigurerAdapter`) — 상태 + 이벤트 + 가드/액션 (ADR-019)
+- [x] `OrderSagaCoordinator` 가 OrderService 와 *shadow* 로 병행 운영 → 결정 일관성을 `order.saga.consistency{result=ok|mismatch}` 메트릭으로 비교
+- [x] `app.saga.machine.enforce=true` 토글 — mismatch 시 즉시 예외 (CI/staging 검증용)
+- [x] 9개 단위 테스트 (8 시나리오 + terminal 보호) + 5개 coordinator 테스트 (shadow / enforce / unhandled / consistency)
 
 ### Step 6 — correlation-mdc-starter
 - [ ] OTel trace_id 가 이미 MDC (Mapped Diagnostic Context — SLF4J/Logback 의 thread-local 키밸류 저장소, 로그 패턴에서 `%X{key}` 로 출력 가능) 에 들어가는 부분은 그대로 활용
