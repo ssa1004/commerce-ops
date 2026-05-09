@@ -57,6 +57,15 @@ dependencies {
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
+// `-parameters` — Spring 의 일부 리플렉션 경로 (특히 `@ConfigurationProperties` 의 record /
+// constructor binding, actuator endpoint `@Selector`) 가 클래스 파일의 MethodParameters
+// attribute 를 요구한다. Spring Boot Gradle 플러그인이 자동으로 켜는 옵션이지만 라이브러리
+// 모듈은 직접 켜야 한다. 지금 이 모듈은 actuator endpoint 가 없어 즉각 깨지진 않지만 추후
+// 추가될 때 회귀 (재발) 를 막기 위해 starter 표면에서 일관 적용.
+tasks.withType<JavaCompile> {
+	options.compilerArgs.add("-parameters")
+}
+
 tasks.withType<Test> {
 	useJUnitPlatform()
 }

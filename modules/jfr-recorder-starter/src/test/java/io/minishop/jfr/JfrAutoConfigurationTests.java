@@ -114,6 +114,30 @@ class JfrAutoConfigurationTests {
     }
 
     /**
+     * 회귀 방지 — JfrEndpoint.dump(@Selector String tag) 가 actuator 의 `OperationMethodParameters`
+     * 검증을 통과해야 한다. 컴파일 시 `-parameters` 플래그가 빠지면 클래스 파일에 MethodParameters
+     * attribute 가 없어 *컨텍스트 부팅 자체*가 깨진다 — actuator 가 health check 까지 같이 막혀
+     * 운영 사고로 직결.
+     *
+     * <p>이 테스트는 endpoint 의 메서드를 직접 reflect 해 파라미터 이름이 컴파일러에 의해 보존됐는지
+     * 단언한다 — build.gradle.kts 의 `-parameters` compilerArg 가 누군가 지운 순간 빨갛게 떨어진다.
+     */
+    @Test
+    void jfrEndpointDumpMethodRetainsParameterNames() throws NoSuchMethodException {
+        java.lang.reflect.Method dump = JfrEndpoint.class.getMethod("dump", String.class);
+        java.lang.reflect.Parameter[] params = dump.getParameters();
+        assertThat(params).hasSize(1);
+        // `-parameters` 가 없으면 파라미터 이름이 "arg0" 로 합성되어 들어온다 — Spring 의
+        // OperationMethodParameters 는 이 경우 IllegalStateException 을 던져 컨텍스트 부팅을
+        // 통째로 깨뜨린다.
+        assertThat(params[0].isNamePresent())
+                .as("`-parameters` compile flag must be enabled — JfrEndpoint @Selector "
+                        + "needs the original parameter name. Check build.gradle.kts.")
+                .isTrue();
+        assertThat(params[0].getName()).isEqualTo("tag");
+    }
+
+    /**
      * exposure 미허용 시 endpoint bean 자체가 등록되면 안 된다 — 권한 가드 1차 방어.
      */
     @Test
