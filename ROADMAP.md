@@ -147,24 +147,26 @@
 - [x] 18개 단위 테스트 (속성 / limiter 동작 / interceptor / 동시성)
 - [x] 알람: `client_concurrency_limit_saturated` (P2) + [런북](docs/runbook/client-concurrency-limit-saturated.md)
 
-### Step 7 — Spring StateMachine 으로 OrderSAGA 모델링 ✅
+### Step 6 — Spring StateMachine 으로 OrderSAGA 모델링 ✅
 - [x] `OrderSagaStates` / `OrderSagaEvents` / `OrderSagaConfig` (`EnumStateMachineConfigurerAdapter`) — 상태 + 이벤트 + 가드/액션 (ADR-019)
 - [x] `OrderSagaCoordinator` 가 OrderService 와 *shadow* 로 병행 운영 → 결정 일관성을 `order.saga.consistency{result=ok|mismatch}` 메트릭으로 비교
 - [x] `app.saga.machine.enforce=true` 토글 — mismatch 시 즉시 예외 (CI/staging 검증용)
 - [x] 9개 단위 테스트 (8 시나리오 + terminal 보호) + 5개 coordinator 테스트 (shadow / enforce / unhandled / consistency)
 
-### Step 6 — correlation-mdc-starter
+> 아래 Step 7~9 는 placeholder 모듈 — `modules/<name>/` 에 README 만 있고 `src/` 가 없는 상태. 정식 구현 시 v0.1 publish + composite build 등록까지 한 단위.
+
+### Step 7 — correlation-mdc-starter (placeholder)
 - [ ] OTel trace_id 가 이미 MDC (Mapped Diagnostic Context — SLF4J/Logback 의 thread-local 키밸류 저장소, 로그 패턴에서 `%X{key}` 로 출력 가능) 에 들어가는 부분은 그대로 활용
-- [ ] 추가: HTTP 헤더(X-User-Id, X-Request-Id 등)에서 비즈니스 식별자를 MDC 로 주입 (로그/트레이스에 사용자 ID 까지 같이 보이도록)
+- [ ] 추가: HTTP 헤더(X-User-Id, X-Request-Id 등)에서 비즈니스 식별자를 MDC 로 주입 — ADR-013 의 PII 마스킹 정책을 starter 에서 자동 적용
 - [ ] Kafka consumer 에서도 동일하게 (현재 trace 컨텍스트 외에 추가 attribute)
 - [ ] 비동기 Executor 데코레이터 (Reactor / `@Async`) — 다른 스레드로 작업이 넘어갈 때도 MDC 가 따라가도록
 
-### Step 4 — actuator-extras
+### Step 8 — actuator-extras (placeholder)
 - [ ] `/actuator/hikari` (DB 커넥션 풀의 active/idle/pending + 최근 느렸던 acquire 기록)
 - [ ] `/actuator/threadpools` (모든 `ThreadPoolTaskExecutor` 의 현재 상태)
 - [ ] `/actuator/transactions` (지금 진행 중인 트랜잭션 추적)
 
-### Step 5 — chaos-injector
+### Step 9 — chaos-injector (placeholder)
 - [ ] AOP (Aspect-Oriented Programming — 메서드 호출 앞뒤에 별도 로직을 끼워 넣는 기법) 기반 메서드 단위 지연/실패 주입
 - [ ] HTTP endpoint 로 동적 조절 (재시작 없이 강도 변경)
 - [ ] `production` 프로파일 (Spring 의 환경 구분) 에서 강제 disable 안전 가드

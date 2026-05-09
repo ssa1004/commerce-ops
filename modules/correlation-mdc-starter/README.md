@@ -1,6 +1,10 @@
 # correlation-mdc-starter
 
+> 📝 **설계 단계** — `src/` 없음, 의존성으로 추가해도 동작 코드 없음. ROADMAP Phase 3 Step 6 에서 구현 예정.
+
 OpenTelemetry **Trace ID** (요청 하나의 식별자) 를 SLF4J **MDC** (Mapped Diagnostic Context — 이 스레드의 키밸류 저장소, 로그 패턴에서 `%X{key}` 로 출력 가능) 에 자동 주입. 로그·트레이스·메트릭 상관관계가 단일 ID 로 연결되도록.
+
+> ℹ️ **현재 상태와의 비교**: OTel Spring Boot starter (services/* 가 이미 사용 중) 가 trace_id / span_id 는 자동으로 MDC 에 넣어준다. 본 모듈의 정식 도입 동기는 *비즈니스 attribute* (X-User-Id, X-Request-Id 등 헤더 → 마스킹 → MDC) 의 일관 처리. ADR-013 의 PII 마스킹 정책을 starter 차원에서 강제하는 자리.
 
 ## 배경
 

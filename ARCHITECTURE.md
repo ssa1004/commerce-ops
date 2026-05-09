@@ -84,20 +84,21 @@ choreography (안무) 는 어느 한 서비스가 흐름을 지휘하지 않고,
 
 ## 자체 운영 라이브러리 (Phase 3, `modules/`)
 
-운영 노하우를 작은 Spring Boot starter들로 떼어내 모든 서비스에 의존성으로 추가하도록 만들 예정입니다. 현재는 설계 문서 단계.
+운영 노하우를 작은 Spring Boot starter들로 떼어내 모든 서비스에 의존성으로 추가합니다. 2개 구현 완료 (services/* 가 composite build 로 직접 사용), 3개는 설계 단계.
 
-| 모듈 | 역할 |
-|---|---|
-| `slow-query-detector` | JPA/JDBC 슬로우·N+1 자동 감지 → 메트릭/로그/trace event |
-| `correlation-mdc-starter` | OTel trace_id ↔ MDC 자동 동기화 (지금은 OTel starter가 자동 처리, 추후 더 풍부한 attribute 추가) |
-| `actuator-extras` | HikariCP / 스레드풀 / 트랜잭션 통계 커스텀 endpoint |
-| `chaos-injector` | 메서드 단위 지연/실패 주입 (테스트·데모용) |
+| 모듈 | 상태 | 역할 |
+|---|---|---|
+| `slow-query-detector` | ✅ v0.1 (order-service 적용) | JPA/JDBC 슬로우·N+1 자동 감지 → 메트릭/로그 (ADR-012) |
+| `jfr-recorder-starter` | ✅ v0.1 (order-service 적용) | JFR continuous profiling 상시 가동 + chunk 원격 업로드 (ADR-015 / ADR-018) |
+| `correlation-mdc-starter` | 📝 설계 | OTel trace_id ↔ MDC 자동 동기화 (지금은 OTel starter가 자동 처리, 추후 더 풍부한 attribute 추가) |
+| `actuator-extras` | 📝 설계 | HikariCP / 스레드풀 / 트랜잭션 통계 커스텀 endpoint |
+| `chaos-injector` | 📝 설계 | 메서드 단위 지연/실패 주입 (테스트·데모용) |
 
 ---
 
 ## 설계 결정 (요약)
 
-자세한 배경은 [docs/decision-log.md](docs/decision-log.md)에 ADR로 기록 (현재 10개). 핵심:
+자세한 배경은 [docs/decision-log.md](docs/decision-log.md)에 ADR로 기록 (현재 22개). 핵심:
 
 - **Java 21 + Spring Boot 3.5** — Virtual Threads (운영체제 스레드보다 훨씬 가벼운 JVM 차원의 스레드 — 동시성 비용을 크게 낮춤) 등 신규 문법 활용
 - **서비스별 DB 분리** — 마이크로서비스 원칙 + 독립 진화 (한 서비스의 스키마 변경이 다른 서비스를 막지 않게)
