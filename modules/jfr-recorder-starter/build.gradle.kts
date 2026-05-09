@@ -57,6 +57,17 @@ dependencies {
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
+// `-parameters` — Spring Boot Actuator endpoint (`@ReadOperation` / `@WriteOperation`) 가
+// `@Selector` 파라미터 이름을 리플렉션으로 읽어 path variable 에 매핑한다. 클래스 파일에
+// MethodParameters attribute 가 빠지면 사용자 앱 부팅 시 "Failed to extract parameter names
+// for ..." 로 즉시 BeanCreationException — actuator 가 깨지면 health check 까지 같이 막힘.
+// Spring Boot Gradle 플러그인을 쓰는 서비스 모듈은 자동으로 켜지지만 라이브러리 모듈은
+// 직접 켜야 한다. 이 starter 를 의존성으로 넣는 모든 사용자 앱이 영향을 받으므로 *빌드*
+// 표면에서 보장한다 (테스트 잡기 어려운 런타임 사고를 컴파일 시점으로 당김).
+tasks.withType<JavaCompile> {
+	options.compilerArgs.add("-parameters")
+}
+
 tasks.withType<Test> {
 	useJUnitPlatform()
 }

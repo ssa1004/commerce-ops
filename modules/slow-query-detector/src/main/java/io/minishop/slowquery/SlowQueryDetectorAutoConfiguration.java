@@ -1,6 +1,7 @@
 package io.minishop.slowquery;
 
 import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -54,10 +55,18 @@ public class SlowQueryDetectorAutoConfiguration {
     }
 
     @Bean
-    public static DataSourceProxyPostProcessor dataSourceProxyPostProcessor(SlowQueryListener listener) {
+    public static DataSourceProxyPostProcessor dataSourceProxyPostProcessor(
+            ObjectProvider<SlowQueryListener> listenerProvider) {
         // BeanPostProcessor (다른 빈을 만든 직후에 가로채는 훅) 는 다른 빈보다 먼저 등록되어야 하므로
         // static 팩토리 메서드 (Spring 이 의존성 그래프를 따지기 전에 만들 수 있게) 로 선언.
-        return new DataSourceProxyPostProcessor(listener);
+        //
+        // 리스너는 ObjectProvider 로 lazy 주입 — 직접 (SlowQueryListener) 받으면 BPP 생성 시점에
+        // 리스너 → MeterRegistry 가 즉시 생성되어, MeterBinder (jvm.* / process.* 등) 들이 레지스트리에
+        // 바인딩되기 전에 레지스트리가 "고정" 된다. 그러면 /actuator/prometheus 출력에서 JVM 메트릭
+        // 전체가 사라지는 사고가 난다. ObjectProvider#getObject 는 호출 시점 (DataSource 가 만들어진
+        // 직후) 에 lookup 하므로 그 시점이면 MeterBinder 들이 모두 bind 끝난 상태.
+        // 자세한 분석은 DataSourceProxyPostProcessor 의 Javadoc 참조.
+        return new DataSourceProxyPostProcessor(listenerProvider);
     }
 
     /**
