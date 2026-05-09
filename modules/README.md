@@ -1,14 +1,16 @@
 # Spring Boot Ops Toolkit
 
-레포 안에서 자체 개발할 Spring Boot 운영 라이브러리 모음입니다. 현재는 설계 문서 단계이며, Phase 3에서 구현한 뒤 각 서비스에 의존성으로 추가합니다.
+레포 안에서 자체 개발하는 Spring Boot 운영 라이브러리 모음. 2개는 구현 완료 + services/* 에 적용되어 동작 중, 3개는 설계 단계 (README + DESIGN 만 — 정식 구현 전).
 
-| Module | 한 줄 설명 |
-|---|---|
-| [slow-query-detector](slow-query-detector/) | JPA/JDBC 슬로우·N+1 (한 번 작업에서 같은 모양의 쿼리가 N 번 반복되는 안티패턴) 쿼리를 자동 감지해 메트릭/로그/Trace event 로 노출 |
-| [jfr-recorder-starter](jfr-recorder-starter/) | JFR (Java Flight Recorder — JDK 표준 저오버헤드 프로파일러) always-on continuous profiling — rolling chunk + actuator dump endpoint |
-| [correlation-mdc-starter](correlation-mdc-starter/) | OTel Trace ID ↔ MDC (SLF4J/Logback 의 thread-local 키밸류 — 로그 패턴에 출력 가능) 자동 동기화. 로그·트레이스·메트릭 상관관계 |
-| [actuator-extras](actuator-extras/) | HikariCP (DB 커넥션 풀), 스레드풀, 트랜잭션 통계 커스텀 endpoint |
-| [chaos-injector](chaos-injector/) | 메서드 단위로 지연/실패를 일부러 주입 (테스트·데모용) |
+| Module | 상태 | 한 줄 설명 |
+|---|---|---|
+| [slow-query-detector](slow-query-detector/) | ✅ v0.1 — order-service 적용 | JPA/JDBC 슬로우·N+1 쿼리 자동 감지 → 메트릭/로그 (ADR-012) |
+| [jfr-recorder-starter](jfr-recorder-starter/) | ✅ v0.1 — order-service 적용 | JFR always-on continuous profiling — rolling chunk + actuator dump + S3/MinIO 자동 업로드 (ADR-015 / ADR-018) |
+| [correlation-mdc-starter](correlation-mdc-starter/) | 📝 설계 (Phase 3 Step 6) | OTel Trace ID ↔ MDC 자동 동기화 — 비즈니스 attribute (X-User-Id 등) 까지 |
+| [actuator-extras](actuator-extras/) | 📝 설계 (Phase 3 Step 4) | HikariCP / 스레드풀 / 트랜잭션 통계 커스텀 endpoint |
+| [chaos-injector](chaos-injector/) | 📝 설계 (Phase 3 Step 5) | 메서드 단위로 지연/실패 주입 (테스트·데모용) |
+
+> 📝 설계 단계 모듈은 디렉토리에 README 만 있고 `src/` 는 없습니다. 의존성으로 추가해도 동작 코드가 없어 사용 불가 — 정식 구현 시점에 v0.1 태그가 붙고 위 표가 ✅ 로 바뀝니다. 상세 단계는 [ROADMAP](../ROADMAP.md) 참조.
 
 ## 설계 원칙
 

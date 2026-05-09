@@ -102,6 +102,64 @@
 - **대안**: p6spy — 같은 DataSource 단 라이브러리지만 `spy.properties` 파일 + JDBC URL 변경이 필요. datasource-proxy 는 Spring 과 자연스럽게 결합되고 JDBC URL 을 건드리지 않는다.
 - **결과**: 사용자는 의존성만 추가하면 끝. DataSource 구현 (Hikari/Tomcat/etc.) 무관. v0.1 은 슬로우 + N+1 만 측정, v0.2 후보로 OTel span event attach (감지 결과를 trace span 에 이벤트로 첨부해 Tempo 화면에서 바로 보이게) 가 있음 (자세한 설계는 [modules/slow-query-detector/DESIGN.md](../modules/slow-query-detector/DESIGN.md)).
 
+## ADR-013 — 로그에 식별자 노출 정책 (PII 마스킹)
+
+- **결정**:
+  - `userId` 처럼 **한 사람을 1:1 로 식별하는 자연 키** 는 로그 평문 금지. `LogIds.userId(...)` 로 SHA-256 앞 4byte (8 hex) 해시에 `u:` prefix 를 붙여 찍는다 (예: `u:3a4f7b9c`). 같은 user 는 항상 같은 값 → trace 추적은 가능하지만 원본 ID 는 안 보인다.
+  - `orderId` / `paymentId` / `reservationId` / `productId` 같은 **시스템 내부 surrogate 키** (DB 자동증가 ID, 사용자 식별과 무관) 는 평문 허용. 운영 grep 의 1차 식별자라 마스킹하면 디버깅 비용이 너무 커진다.
+  - logback 패턴에 항상 `[%X{trace_id:-}/%X{span_id:-}]` 슬롯 유지 (OTel logback-appender 가 MDC 에 자동 주입).
+  - logback 패턴에 `userId` MDC 슬롯도 함께 두되, 거기 들어가는 값은 반드시 `LogIds.userId(...)` 결과여야 한다 (평문 userId 를 MDC 에 직접 넣으면 안 됨).
+- **배경**: Phase 2~3 진행 중 `userId` 가 INFO 로그에 평문 노출되는 패턴이 점진적으로 늘어날 위험이 있어, 발생 전에 정책과 헬퍼를 둔다. orderId 같은 surrogate 까지 마스킹하면 운영 디버깅이 사실상 불가능해지므로 균형을 잡았다.
+- **대안 1 — 모든 ID 마스킹**: 보안은 강해지지만 운영성 손실이 크다.
+- **대안 2 — 정책만 있고 헬퍼는 없음**: 사람마다 다른 방식으로 마스킹하면 같은 사용자가 다른 해시로 찍혀 trace 가 끊어진다.
+- **결과**:
+  - `services/{order,payment}-service/src/main/java/.../util/LogIds.java` 에 헬퍼.
+  - inventory-service 는 `userId` 를 직접 다루지 않으므로 헬퍼 불필요.
+  - logback 패턴에 `[%X{userId:-}]` 슬롯 추가 (order/payment).
+  - 후속 (correlation-mdc-starter 정식 도입 시) 에 `Filter` 가 X-User-Id 헤더를 받아 자동으로 마스킹된 값을 MDC 에 넣도록 통합 예정.
+
+## ADR-014 — Tail-based sampling (OTel Collector)
+
+- **결정**: trace sampling 을 head (요청 시작 시 결정) 에서 tail (trace 완료 후 결정) 로 전환. OTel Collector 의 `tail_sampling` processor 에 composite policy — `errors → 100%`, `http 5xx → 100%`, `latency > 500ms → 100%`, `random → 1%` — 를 적용.
+- **배경**:
+  - head-based 1% 만 보면 전체 비용은 낮지만 정작 보고 싶은 error / slow trace 가 99% 손실된다. p99 디버깅 / 사고 회고가 우연 (sample 에 걸렸을 때만 가능) 에 의존.
+  - 100% 를 보내면 cost / network / 백엔드 (Tempo) 부담이 ~100x. 데모 환경은 견디지만 운영은 곧 깨진다.
+  - tail-based 는 trace 의 결과를 보고 결정 — error / slow 는 100% 로 보존하면서 정상 trace 는 1% 만 들어와 전체 비용은 ~1.x% 에 머문다. 보존하고 싶은 신호의 recall 을 100% 로 끌어올린다.
+- **대안**:
+  1. **OTel SDK 측 ParentBased + TraceIdRatioBased(0.01)** — head-based. 간단/저비용, 표본 균일. error 보존이 안 됨 (위 문제 그대로).
+  2. **상시 100% 송신 + 백엔드 (Tempo) 에서 query 시점에만 필터** — 보존은 완벽하지만 비용 그대로. 작은 팀에선 채택 어려움.
+  3. **error 만 100% (latency 없이)** — error 는 잡히지만 *non-error 인데 느린* trace (deadlock, GC, lock contention) 가 누락됨.
+  4. **3계층 (SDK head 1% + collector tail) 조합** — 데이터 손실이 두 단계로 누적. SDK 가 1% 만 보내면 collector 의 tail 결정도 1% 안에서만. 본질적으로 head 와 같음 — 채택 불가.
+- **결과**:
+  - SDK: 100% 송신 (현 OTel starter 기본).
+  - Collector: `tail_sampling` 으로 OR 결합 — error/5xx/slow/random.
+  - `decision_wait: 10s` — root span 시작 후 10s 동안 child span 이 도착할 시간을 준다. 우리 시스템 p99 < 5s 기준으로 안전.
+  - `num_traces: 50000` — 동시 보존 trace 상한. 데모 환경은 충분, 운영은 트래픽 × decision_wait × 평균 span 수를 보고 sizing.
+  - `memory_limiter` 를 파이프라인 맨 앞에 둬서 OOM 으로 collector 가 죽는 사고를 방지. saturation 은 별도 알람 (`tail_sampling_buffer_saturation`) 으로 잡는다.
+  - 일반적인 tail sampling 구성 — error 보존 + latency 보존 + 잔여 random — 의 표준 결합.
+  - **다음 phase 신호**: 단일 collector 가 saturation 에 닿는 순간 = 2계층 (loadbalancing collector → tail_sampling pool) 으로 가야 할 때. tail_sampling 은 동일 trace 의 모든 span 이 같은 collector 로 라우팅돼야 동작하므로 trace_id 기반 routing 이 필수.
+  - runbook: [tail-sampling-buffer-saturation](../docs/runbook/tail-sampling-buffer-saturation.md).
+
+## ADR-015 — JFR continuous profiling 을 항상 켜둔다
+
+- **결정**: `modules/jfr-recorder-starter` 를 만들고, 의존성을 추가하면 부팅 시 JFR (Java Flight Recorder — JDK 표준 저오버헤드 프로파일러) 을 상시 켠다. `rollover` (기본 5분) 주기마다 chunk 를 디스크에 떨구고 `maxRetained` (기본 24개 = 2시간) 만큼 보존. 운영자는 `/actuator/jfr/{tag}` 로 즉시 ad-hoc dump trigger 가능.
+- **배경**:
+  - 사고 회고에서 가장 답답한 순간이 "p99 가 튀었는데 그 시점 무슨 메서드가 CPU 를 먹고 있었는지 알 수 없다" 는 것. 그때 가서 켜는 방식 (async-profiler 를 이상 발생 후 attach) 은 놓친 사고 윈도우를 재현할 때까지 기다려야 함.
+  - continuous profiling (상시 켠 채 chunk 단위로 보존) 이 일반화된 운영 패턴. JFR 의 default 설정 오버헤드는 ~1% 라 상시 운영에 부담이 적다.
+  - 메트릭/로그/trace 만으로는 런타임 내부 (allocation 패턴, lock contention, JIT, GC) 가 보이지 않는다 — 옵저버빌리티의 4번째 신호 = profile.
+- **대안**:
+  1. **async-profiler agent (`-agentpath`) 상시 부착** — 더 정밀 (특히 wall-clock, allocation), 그러나 native 라이브러리 배포 부담. 컨테이너 이미지에 별도 layer.
+  2. **알람 발화 시 사람이 attach** — 운영 부담 + 윈도우 놓침. 앞서 적은 핵심 동기와 어긋남.
+  3. **OTel profile signal (alpha)** — 표준화 진행 중이지만 도구 ecosystem (JMC / async-profiler view) 이 아직 file 기반. 시기상조.
+- **결과**:
+  - 상시 켠 채 5분마다 rollover, 2시간 분량 보존. 사고 발생 후 평균 30분 ~ 1시간 안에 분석을 시작한다는 SRE 경험치의 2배 버퍼.
+  - PII 보호: `mask-sensitive-events=true` 로 `jdk.SocketRead/Write`, `jdk.FileRead/Write` 를 발생 시점에 disable (post-hoc 마스킹과 다름 — 데이터가 아예 안 들어감).
+  - actuator endpoint 는 exposure 미허용 시 bean 자체가 등록되지 않음 (`@ConditionalOnAvailableEndpoint`) — 권한 가드 1차 방어.
+  - Java 21 toolchain 강제 — JFR 은 11+ 이지만 다른 모듈과 일관성.
+  - JFR 자체가 비활성인 환경 (일부 GraalVM, 일부 컨테이너) 에선 `JfrRecorder.start()` 가 예외를 throw 하지 않고 메트릭 + WARN 로그로만 알림 → 사용자 앱 부팅이 깨지지 않음.
+  - 운영 가이드: [docs/runbook/jfr-analysis.md](../docs/runbook/jfr-analysis.md) — JMC / async-profiler / programmatic 분석 흐름.
+  - **다음 phase 신호**: 사고 → JFR 분석 흐름이 자리잡고 나면, (a) chunk S3 자동 업로드 + retention extend, (b) OTLP profile signal stable 화 시 그쪽 exporter 전환, (c) async-profiler agent 로 격상 (정밀도 더 필요할 때) — 이 셋이 후보.
+
 ## ADR-016 — Adaptive concurrency limiter (Netflix concurrency-limits, Gradient2)
 
 - **결정**: order-service 의 외부 호출 (`InventoryClient`, `PaymentClient`) 에 Netflix concurrency-limits 의 `Gradient2Limit` 기반 adaptive limiter 를 적용. RestClient `ClientHttpRequestInterceptor` 위치에 끼워 매 호출에 acquire/release. queueSize=0 — 한도 초과 시 즉시 `LimitExceededException` (503 + Retry-After 1s).
@@ -126,48 +184,6 @@
   - **enabled=false 토글** — 도입 직후 문제가 생기면 기존 (timeout 만) 동작으로 즉시 롤백 가능.
   - **다음 phase 신호**: 한 호출 그래프에 limiter 가 여러 단 쌓이면 (order → payment → external PG) backpressure 가 *위로* 전파되어야 — Reactive (Project Reactor / RxJava) 의 backpressure 와 결합 검토. 본 phase 는 단일 layer.
   - runbook: [client-concurrency-limit-saturated](../docs/runbook/client-concurrency-limit-saturated.md).
-
-## ADR-015 — JFR continuous profiling 을 항상 켜둔다
-
-- **결정**: `modules/jfr-recorder-starter` 를 만들고, 의존성을 추가하면 부팅 시 JFR (Java Flight Recorder — JDK 표준 저오버헤드 프로파일러) 을 상시 켠다. `rollover` (기본 5분) 주기마다 chunk 를 디스크에 떨구고 `maxRetained` (기본 24개 = 2시간) 만큼 보존. 운영자는 `/actuator/jfr/{tag}` 로 즉시 ad-hoc dump trigger 가능.
-- **배경**:
-  - 사고 회고에서 가장 답답한 순간이 "p99 가 튀었는데 그 시점 무슨 메서드가 CPU 를 먹고 있었는지 알 수 없다" 는 것. 그때 가서 켜는 방식 (async-profiler 를 이상 발생 후 attach) 은 놓친 사고 윈도우를 재현할 때까지 기다려야 함.
-  - continuous profiling (상시 켠 채 chunk 단위로 보존) 이 일반화된 운영 패턴. JFR 의 default 설정 오버헤드는 ~1% 라 상시 운영에 부담이 적다.
-  - 메트릭/로그/trace 만으로는 런타임 내부 (allocation 패턴, lock contention, JIT, GC) 가 보이지 않는다 — 옵저버빌리티의 4번째 신호 = profile.
-- **대안**:
-  1. **async-profiler agent (`-agentpath`) 상시 부착** — 더 정밀 (특히 wall-clock, allocation), 그러나 native 라이브러리 배포 부담. 컨테이너 이미지에 별도 layer.
-  2. **알람 발화 시 사람이 attach** — 운영 부담 + 윈도우 놓침. 앞서 적은 핵심 동기와 어긋남.
-  3. **OTel profile signal (alpha)** — 표준화 진행 중이지만 도구 ecosystem (JMC / async-profiler view) 이 아직 file 기반. 시기상조.
-- **결과**:
-  - 상시 켠 채 5분마다 rollover, 2시간 분량 보존. 사고 발생 후 평균 30분 ~ 1시간 안에 분석을 시작한다는 SRE 경험치의 2배 버퍼.
-  - PII 보호: `mask-sensitive-events=true` 로 `jdk.SocketRead/Write`, `jdk.FileRead/Write` 를 발생 시점에 disable (post-hoc 마스킹과 다름 — 데이터가 아예 안 들어감).
-  - actuator endpoint 는 exposure 미허용 시 bean 자체가 등록되지 않음 (`@ConditionalOnAvailableEndpoint`) — 권한 가드 1차 방어.
-  - Java 21 toolchain 강제 — JFR 은 11+ 이지만 다른 모듈과 일관성.
-  - JFR 자체가 비활성인 환경 (일부 GraalVM, 일부 컨테이너) 에선 `JfrRecorder.start()` 가 예외를 throw 하지 않고 메트릭 + WARN 로그로만 알림 → 사용자 앱 부팅이 깨지지 않음.
-  - 운영 가이드: [docs/runbook/jfr-analysis.md](../docs/runbook/jfr-analysis.md) — JMC / async-profiler / programmatic 분석 흐름.
-  - **다음 phase 신호**: 사고 → JFR 분석 흐름이 자리잡고 나면, (a) chunk S3 자동 업로드 + retention extend, (b) OTLP profile signal stable 화 시 그쪽 exporter 전환, (c) async-profiler agent 로 격상 (정밀도 더 필요할 때) — 이 셋이 후보.
-
-## ADR-014 — Tail-based sampling (OTel Collector)
-
-- **결정**: trace sampling 을 head (요청 시작 시 결정) 에서 tail (trace 완료 후 결정) 로 전환. OTel Collector 의 `tail_sampling` processor 에 composite policy — `errors → 100%`, `http 5xx → 100%`, `latency > 500ms → 100%`, `random → 1%` — 를 적용.
-- **배경**:
-  - head-based 1% 만 보면 전체 비용은 낮지만 정작 보고 싶은 error / slow trace 가 99% 손실된다. p99 디버깅 / 사고 회고가 우연 (sample 에 걸렸을 때만 가능) 에 의존.
-  - 100% 를 보내면 cost / network / 백엔드 (Tempo) 부담이 ~100x. 데모 환경은 견디지만 운영은 곧 깨진다.
-  - tail-based 는 trace 의 결과를 보고 결정 — error / slow 는 100% 로 보존하면서 정상 trace 는 1% 만 들어와 전체 비용은 ~1.x% 에 머문다. 보존하고 싶은 신호의 recall 을 100% 로 끌어올린다.
-- **대안**:
-  1. **OTel SDK 측 ParentBased + TraceIdRatioBased(0.01)** — head-based. 간단/저비용, 표본 균일. error 보존이 안 됨 (위 문제 그대로).
-  2. **상시 100% 송신 + 백엔드 (Tempo) 에서 query 시점에만 필터** — 보존은 완벽하지만 비용 그대로. 작은 팀에선 채택 어려움.
-  3. **error 만 100% (latency 없이)** — error 는 잡히지만 *non-error 인데 느린* trace (deadlock, GC, lock contention) 가 누락됨.
-  4. **3계층 (SDK head 1% + collector tail) 조합** — 데이터 손실이 두 단계로 누적. SDK 가 1% 만 보내면 collector 의 tail 결정도 1% 안에서만. 본질적으로 head 와 같음 — 채택 불가.
-- **결과**:
-  - SDK: 100% 송신 (현 OTel starter 기본).
-  - Collector: `tail_sampling` 으로 OR 결합 — error/5xx/slow/random.
-  - `decision_wait: 10s` — root span 시작 후 10s 동안 child span 이 도착할 시간을 준다. 우리 시스템 p99 < 5s 기준으로 안전.
-  - `num_traces: 50000` — 동시 보존 trace 상한. 데모 환경은 충분, 운영은 트래픽 × decision_wait × 평균 span 수를 보고 sizing.
-  - `memory_limiter` 를 파이프라인 맨 앞에 둬서 OOM 으로 collector 가 죽는 사고를 방지. saturation 은 별도 알람 (`tail_sampling_buffer_saturation`) 으로 잡는다.
-  - 일반적인 tail sampling 구성 — error 보존 + latency 보존 + 잔여 random — 의 표준 결합.
-  - **다음 phase 신호**: 단일 collector 가 saturation 에 닿는 순간 = 2계층 (loadbalancing collector → tail_sampling pool) 으로 가야 할 때. tail_sampling 은 동일 trace 의 모든 span 이 같은 collector 로 라우팅돼야 동작하므로 trace_id 기반 routing 이 필수.
-  - runbook: [tail-sampling-buffer-saturation](../docs/runbook/tail-sampling-buffer-saturation.md).
 
 ## ADR-017 — OTel Collector 2-tier (loadbalancing → tail_sampling pool)
 
@@ -329,19 +345,3 @@
     2. retry 횟수 / 패턴 분석에서 특정 endpoint 만 retry 가 많으면 그 endpoint 가 transient 가 아닌 잘못된 input 일 신호 — 4xx 분류 점검.
     3. `Retry-After` 응답 헤더 존중 — 5xx 응답에 backend 가 명시한 wait 시간이 있다면 우리 backoff 계산을 override (RFC 7231).
     4. `decorrelated jitter` 로 격상 검토 — 매우 높은 동시성에서 equal jitter 보다 thundering herd 차단이 약간 더 좋음 (AWS 비교 그래프). 단 wait 분포 직관성이 떨어짐.
-
-## ADR-013 — 로그에 식별자 노출 정책 (PII 마스킹)
-
-- **결정**:
-  - `userId` 처럼 **한 사람을 1:1 로 식별하는 자연 키** 는 로그 평문 금지. `LogIds.userId(...)` 로 SHA-256 앞 4byte (8 hex) 해시에 `u:` prefix 를 붙여 찍는다 (예: `u:3a4f7b9c`). 같은 user 는 항상 같은 값 → trace 추적은 가능하지만 원본 ID 는 안 보인다.
-  - `orderId` / `paymentId` / `reservationId` / `productId` 같은 **시스템 내부 surrogate 키** (DB 자동증가 ID, 사용자 식별과 무관) 는 평문 허용. 운영 grep 의 1차 식별자라 마스킹하면 디버깅 비용이 너무 커진다.
-  - logback 패턴에 항상 `[%X{trace_id:-}/%X{span_id:-}]` 슬롯 유지 (OTel logback-appender 가 MDC 에 자동 주입).
-  - logback 패턴에 `userId` MDC 슬롯도 함께 두되, 거기 들어가는 값은 반드시 `LogIds.userId(...)` 결과여야 한다 (평문 userId 를 MDC 에 직접 넣으면 안 됨).
-- **배경**: Phase 2~3 진행 중 `userId` 가 INFO 로그에 평문 노출되는 패턴이 점진적으로 늘어날 위험이 있어, 발생 전에 정책과 헬퍼를 둔다. orderId 같은 surrogate 까지 마스킹하면 운영 디버깅이 사실상 불가능해지므로 균형을 잡았다.
-- **대안 1 — 모든 ID 마스킹**: 보안은 강해지지만 운영성 손실이 크다.
-- **대안 2 — 정책만 있고 헬퍼는 없음**: 사람마다 다른 방식으로 마스킹하면 같은 사용자가 다른 해시로 찍혀 trace 가 끊어진다.
-- **결과**:
-  - `services/{order,payment}-service/src/main/java/.../util/LogIds.java` 에 헬퍼.
-  - inventory-service 는 `userId` 를 직접 다루지 않으므로 헬퍼 불필요.
-  - logback 패턴에 `[%X{userId:-}]` 슬롯 추가 (order/payment).
-  - 후속 (correlation-mdc-starter 정식 도입 시) 에 `Filter` 가 X-User-Id 헤더를 받아 자동으로 마스킹된 값을 MDC 에 넣도록 통합 예정.
