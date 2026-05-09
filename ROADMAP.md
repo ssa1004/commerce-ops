@@ -132,7 +132,7 @@
 
 ### Step 4 — JFR continuous profiling (`jfr-recorder-starter`) ✅
 - [x] Spring Boot starter 골격 — auto-config (의존성만 추가 시 자동 활성화) + properties + actuator endpoint (ADR-015)
-- [x] always-on `Recording` + rolling chunk (5분) + retention (24개 = 2시간) — Datadog Continuous Profiler / NHN APM 와 같은 모양
+- [x] always-on `Recording` + rolling chunk (5분) + retention (24개 = 2시간) — continuous profiling 도구들이 일반적으로 채택하는 패턴
 - [x] `/actuator/jfr` (status), `POST /actuator/jfr/{tag}` (ad-hoc dump) — exposure 미허용 시 endpoint 자체 비등록 (권한 가드)
 - [x] sensitive event filter (`mask-sensitive-events`) — `jdk.SocketRead/Write`, `jdk.FileRead/Write` 발생 시점 disable (PII 보호)
 - [x] 16개 단위 테스트 (속성 / 동작 / 자동설정 wiring)

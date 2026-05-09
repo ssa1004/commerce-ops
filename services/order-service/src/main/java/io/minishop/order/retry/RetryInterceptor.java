@@ -19,9 +19,9 @@ import java.net.SocketTimeoutException;
  * jitter 로 retry. 4xx 는 retry 안 함 (client 잘못이므로 같은 결과). 5xx 와 IOException /
  * SocketTimeoutException 만 retry.
  *
- * <p>chain 위치 — {@link io.minishop.order.concurrency.AdaptiveLimiterInterceptor} 의 *바깥*
- * (interceptor 등록 순서로 보장). 매 retry 마다 limiter 가 재진입 → backend 가 망가지는 동안 retry
- * 가 limiter 한도를 함께 줄여 cascade 차단을 강화. ADR-022 참조.
+ * <p>chain 위치 — {@link io.minishop.order.concurrency.AdaptiveLimiterInterceptor} 의 바깥
+ * (interceptor 등록 순서로 보장). 매 retry 마다 limiter 가 재진입 → backend 가 부하를 못 받는
+ * 동안 retry 가 limiter 한도를 함께 줄여 cascade 차단을 강화. ADR-022 참조.
  *
  * <p>MDC 키 {@code retry-attempt} 를 매 시도마다 set/clear — logback 패턴이 attempt 번호를 함께
  * 찍어 사고 회고에서 "이 호출이 몇 번째 retry 였는지" 가 직접 보인다.

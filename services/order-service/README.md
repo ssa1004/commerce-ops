@@ -102,5 +102,5 @@ cd ../inventory-service && ./gradlew bootRun
 
 - **락 → 트랜잭션 순서**: 재고 잡기/해제는 inventory-service 내부에서 락을 먼저 잡고, 그 안에서 짧은 트랜잭션을 연다. order-service 트랜잭션은 짧게 (저장만) 유지하고 외부 호출은 트랜잭션 밖에서 — 외부 호출 동안 DB 커넥션을 쥐고 있지 않음.
 - **멱등성 위임**: 같은 orderId 로 재시도해도 inventory-service 의 `(orderId, productId)` 멱등성 덕분에 재고가 두 번 차감되지 않음.
-- **timeout 짧게 잡기**: payment-service 의 외부 PG read timeout (5s) 보다 order-service 의 payment 호출 read timeout (5s) 이 같거나 길게 잡히지 않게 — 짧게 끊어서 빠르게 보상하는 편이 운영에 유리. (Phase 4 케이스 스터디 소재)
+- **timeout 단조 감소**: 호출 체인의 timeout 은 호출자 ≥ 피호출자 가 되도록 설정. 같거나 호출자가 더 짧으면 in-doubt 윈도우가 자주 발생 (case-studies/2026-05-07-payment-timeout-race 참조).
 - **5xx 와 비즈니스 실패 분리**: 4xx (409/402) 는 의도된 비즈니스 결과 (재고 없음·결제 거절은 시스템 장애 아님). k6 임계값도 `5xx` 만 SLO 위반으로 카운트.
