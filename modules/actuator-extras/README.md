@@ -1,5 +1,7 @@
 # actuator-extras
 
+> 📝 **설계 단계** — `src/` 없음, 의존성으로 추가해도 동작 코드 없음. ROADMAP Phase 3 Step 4 에서 구현 예정.
+
 Spring Boot Actuator (Spring Boot 의 운영 상태 노출 모듈 — `/actuator/*` 경로) 에 운영에서 자주 필요한 정보를 추가하는 커스텀 엔드포인트 모음.
 
 ## 배경
