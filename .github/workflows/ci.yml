@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+# 동시성 — 같은 PR 에 새 푸시가 오면 이전 run 을 즉시 취소 (CI 시간/요금 절약).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint-config:
     name: Validate infra configs
@@ -27,30 +32,68 @@ jobs:
             prom/alertmanager:v0.27.0 \
             check-config /etc/alertmanager/config.yml
 
-  build:
-    name: Build (Phase 1+)
+  # 각 서비스 / 모듈은 독립 Gradle 프로젝트 (root 에 settings.gradle 없음). 이전 build job 은
+  # 루트의 settings.gradle 을 찾아 없으면 건너뛰는 구조라, Phase 1 이후로도 *아무것도 빌드하지
+  # 않은 채* CI 가 초록불을 보였다 — 이 매트릭스가 그 silent skip 을 대체한다.
+  #
+  # services/* 와 modules/* 가 늘어날 때는 아래 두 매트릭스에 *프로젝트 이름만* 추가하면
+  # OK. 각 프로젝트의 build.gradle.kts 가 testcontainers 를 자기 안에서 가져오므로 추가
+  # 셋업은 불필요.
+  modules:
+    name: Build module — ${{ matrix.module }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - slow-query-detector
+          - jfr-recorder-starter
     steps:
       - uses: actions/checkout@v4
-      - name: Detect Gradle project
-        id: gradle
-        shell: bash
-        run: |
-          if compgen -G "settings.gradle*" > /dev/null; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
       - uses: actions/setup-java@v4
-        if: steps.gradle.outputs.exists == 'true'
         with:
           java-version: '21'
           distribution: 'temurin'
       - uses: gradle/actions/setup-gradle@v3
-        if: steps.gradle.outputs.exists == 'true'
-      - name: Build
-        if: steps.gradle.outputs.exists == 'true'
+      - name: Build & test
+        working-directory: modules/${{ matrix.module }}
         run: ./gradlew build --no-daemon
-      - name: Skip build before Phase 1
-        if: steps.gradle.outputs.exists != 'true'
-        run: echo "No Gradle project yet; skipping Phase 1+ build."
+      - name: Upload test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-${{ matrix.module }}
+          path: modules/${{ matrix.module }}/build/reports/tests/
+
+  services:
+    name: Build service — ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    # services 는 modules (slow-query-detector / jfr-recorder-starter) 를 composite build
+    # 로 참조한다 — 즉 modules 가 깨지면 services 도 같이 깨진다. modules job 이 먼저 통과한
+    # 다음에 services 를 돌려, 빨강이 났을 때 어디가 원인인지 매트릭스 이름만 봐도 명확.
+    needs: modules
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - order-service
+          - payment-service
+          - inventory-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+      - uses: gradle/actions/setup-gradle@v3
+      - name: Build & test
+        working-directory: services/${{ matrix.service }}
+        # check 는 build 의 부분집합이지만 명시 — 새로운 verification task 가 추가되면
+        # build 가 자동 포함하지 않을 수 있음.
+        run: ./gradlew build check --no-daemon
+      - name: Upload test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-${{ matrix.service }}
+          path: services/${{ matrix.service }}/build/reports/tests/
