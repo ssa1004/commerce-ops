@@ -58,7 +58,7 @@ class AdaptiveLimiterInterceptorTests {
         ClientHttpResponse resp = interceptor.intercept(req(), new byte[0], exec);
 
         assertThat(resp.getStatusCode().value()).isEqualTo(503);
-        // 5xx 는 backend 가 망가지고 있다는 신호 — onDropped 라 inFlight 정리는 동일.
+        // 5xx 는 backend 가 부하를 못 받는 신호 — onDropped 라 inFlight 정리는 동일.
         assertThat(limiter.currentInFlight()).isZero();
     }
 

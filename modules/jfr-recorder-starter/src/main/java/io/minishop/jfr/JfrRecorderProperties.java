@@ -7,8 +7,8 @@ import java.time.Duration;
 /**
  * JFR (Java Flight Recorder — JDK 표준 저오버헤드 프로파일러) 의 always-on 설정.
  *
- * <p>운영 표준은 Datadog Continuous Profiler / NHN APM / 라인 LINE Profiler 처럼 *24/7 켜둔 채*
- * 일정 주기로 chunk 를 롤오버해 디스크/오브젝트 스토리지에 적재하는 형태. 이 모듈도 같은 모양이다.
+ * <p>continuous profiling 의 일반 패턴 — 24/7 켜둔 채 일정 주기로 chunk 를 롤오버해 디스크/오브젝트
+ * 스토리지에 적재하는 형태. 이 모듈도 같은 모양이다.
  *
  * <p>오버헤드: default 설정은 ~1% (CPU/throughput), profile 설정은 ~3%. 운영 권장은 default.
  *
@@ -21,7 +21,7 @@ import java.time.Duration;
  *       샘플링까지 포함, 진단용).</li>
  *   <li>{@code maskSensitiveEvents}: SocketRead/Write 같은 이벤트의 host/address 를 비활성화.
  *       PII 보호 — JFR 은 원래 운영자만 볼 의도이지만, chunk 가 외부 스토리지로 옮겨지면 그쪽
- *       의 권한 모델을 따라가므로 *발생 시점에* 거르는 편이 안전.</li>
+ *       의 권한 모델을 따라가므로 발생 시점에 거르는 편이 안전.</li>
  * </ul>
  */
 @ConfigurationProperties(prefix = "mini-shop.jfr")
@@ -35,8 +35,8 @@ public record JfrRecorderProperties(
 ) {
     public JfrRecorderProperties {
         if (rollover == null || rollover.isZero() || rollover.isNegative()) {
-            // 5분 — Datadog Continuous Profiler 의 60s 와 NHN APM 의 5m 사이. always-on 의 기본은
-            // *복구 가능한 윈도우* 가 너무 길지 않게. 5분이면 평균 파일 크기 ~10MB 수준.
+            // 5분 — always-on 의 기본은 복구 가능한 윈도우가 너무 길지 않게. 5분이면 평균 파일 크기
+            // ~10MB 수준이라 디스크/네트워크 부담도 작다.
             rollover = Duration.ofMinutes(5);
         }
         if (maxRetained <= 0) {

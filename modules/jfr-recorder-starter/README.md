@@ -1,18 +1,18 @@
 # jfr-recorder-starter
 
-JFR (Java Flight Recorder — JDK 11+ 표준에 들어 있는 저오버헤드 프로파일러) 을 *24/7 항상 켜두고* 일정 주기로 chunk 를 디스크에 떨궈, 사고가 났을 때 *그 직전 시점의* 프로파일을 분석할 수 있게 해주는 Spring Boot starter.
+JFR (Java Flight Recorder — JDK 11+ 표준에 들어 있는 저오버헤드 프로파일러) 을 24/7 항상 켜두고 일정 주기로 chunk 를 디스크에 떨궈, 사고가 났을 때 그 직전 시점의 프로파일을 분석할 수 있게 해주는 Spring Boot starter.
 
 > 의존성만 추가하면 동작 (Spring Boot 3.x 자동 설정, Java 21 toolchain).
 
 ## 배경
 
-- 사고 회고에서 가장 답답한 순간: "p99 가 갑자기 튀어 올랐는데 *그때 무슨 메서드가 CPU 를 먹고 있었는지* 알 수가 없다" — 사후에 재현하기 어려움.
-- async-profiler / JFR 을 *그때 가서* 켜는 방식은 늦음. 한 번의 사고 윈도우를 놓치면 재발할 때까지 기다려야.
-- 운영 표준은 *상시 켜둔 채* (continuous profiling) chunk 단위로 보존 — Datadog Continuous Profiler / NHN APM / 라인 LINE Profiler 모두 같은 방식. JFR 의 default 설정 오버헤드는 ~1% 라 운영에서 부담이 적다.
+- 사고 회고에서 가장 답답한 순간: "p99 가 갑자기 튀어 올랐는데 그때 무슨 메서드가 CPU 를 먹고 있었는지 알 수가 없다" — 사후에 재현하기 어려움.
+- async-profiler / JFR 을 그때 가서 켜는 방식은 늦음. 한 번의 사고 윈도우를 놓치면 재발할 때까지 기다려야 한다.
+- continuous profiling (상시 켠 채 chunk 단위로 보존) 이 일반적인 패턴. JFR 의 default 설정 오버헤드는 ~1% 라 운영에서 부담이 적다.
 
 ## 어떻게 동작하나
 
-1. **자동 설정** 이 부팅 시 `JfrRecorder` 를 만들고 `start()` 호출 → 한 `Recording` 을 시작.
+1. **자동 설정** 이 부팅 시 `JfrRecorder` 를 만들고 `start()` 호출 → 하나의 `Recording` 을 시작.
 2. 별도 스케줄러가 `rollover` (기본 5분) 주기마다:
    - 현재 `Recording` 을 `chunk-YYYYMMDD-HHmmss-<uuid>.jfr` 로 dump.
    - 새 `Recording` 시작.
@@ -82,7 +82,7 @@ management:
 
 ## 원격 업로드 (S3 / MinIO)
 
-JFR chunk 가 디스크에만 있으면 컨테이너가 죽거나 노드가 빠지면 같이 사라집니다. `JfrChunkUploader` 가 chunk rollover 직후 비동기로 원격 사본을 만들어 *컨테이너 사망 직전 데이터까지* 보존합니다.
+JFR chunk 가 디스크에만 있으면 컨테이너가 죽거나 노드가 빠지면 같이 사라집니다. `JfrChunkUploader` 가 chunk rollover 직후 비동기로 원격 사본을 만들어 컨테이너 종료 직전 데이터까지 보존합니다.
 
 - 기본 disable. 활성화는 `mini-shop.jfr.upload.enabled=true`.
 - AWS SDK 가 classpath 에 없으면 자동 noop (의존성 부재로 부팅이 깨지지 않게).
@@ -110,11 +110,11 @@ GCS / Azure Blob / 자체 스토리지를 쓰려면 사용자 앱에서 `JfrChun
 
 ## 보안 / PII
 
-- `mask-sensitive-events: true` 로 켜면 JFR 의 다음 이벤트가 *발생 시점에* disable — chunk 에 들어가지 않음:
+- `mask-sensitive-events: true` 로 켜면 JFR 의 다음 이벤트가 발생 시점에 disable — chunk 에 들어가지 않음:
   - `jdk.SocketRead` / `jdk.SocketWrite` (host/port 노출 위험)
   - `jdk.FileRead` / `jdk.FileWrite` (경로 노출 위험)
 - post-hoc 마스킹과 다름 — JFR 분석 도구 (JMC/async-profiler view) 가 그 이벤트를 못 본다 (= 데이터 자체가 없음).
-- chunk 가 외부 스토리지로 옮겨지면 그쪽 권한 모델 (S3 / object store) 에 의존 — 본 모듈은 *발생 + 보존* 만 책임지고 *전송* 은 운영팀 영역.
+- chunk 가 외부 스토리지로 옮겨지면 그쪽 권한 모델 (S3 / object store) 에 의존 — 본 모듈은 발생 + 보존만 책임지고 전송은 운영팀 영역.
 
 ## JFR 분석 도구
 
@@ -134,9 +134,9 @@ GCS / Azure Blob / 자체 스토리지를 쓰려면 사용자 앱에서 `JfrChun
 - `JfrRecorderTests` — start / rollover / retention / ad-hoc dump / sanitize / idempotent
 - `JfrAutoConfigurationTests` — Spring 자동 설정 wiring (enabled / disabled / actuator 와 함께 / endpoint exposure)
 
-## 설계 결정의 *왜*
+## 설계 결정의 배경
 
-- **JFR (vs async-profiler agent)** — JFR 은 JDK 표준이라 별도 agent 부착 불필요. async-profiler 는 더 정밀 (특히 alloc / wall-clock) 하지만 native 라이브러리 배포가 필요. 운영의 default 는 JFR, *깊은 분석* 시 chunk 를 async-profiler 로 변환하는 흐름이 표준.
+- **JFR (vs async-profiler agent)** — JFR 은 JDK 표준이라 별도 agent 부착 불필요. async-profiler 는 더 정밀 (특히 alloc / wall-clock) 하지만 native 라이브러리 배포가 필요. 기본은 JFR 로 두고, 깊은 분석이 필요할 때 chunk 를 async-profiler 로 변환하는 흐름.
 - **JFR Recording 1개 + rollover (vs 짧은 Recording 들의 시퀀스)** — Recording 시작/종료 자체에도 작은 비용이 있어 끝없이 만드는 건 비용 누적. 1개를 길게 들고 rollover 시점에만 스왑.
-- **filesystem 기반 (vs OTLP profile signal)** — OTel 의 profile signal 은 alpha. 운영 도구 (JMC / async-profiler) 가 현재 모두 file 기반 — 그쪽 ecosystem 에 맞춤. 추후 OTLP profile 이 stable 화 되면 exporter 추가 검토 (ADR-015 후속).
-- **continuous + ad-hoc dump 병행** — continuous 는 *모르는 사고를 위해*, ad-hoc 은 *지금 일어나는 사고를 위해*. 알람과 동시에 운영자가 dump 트리거.
+- **filesystem 기반 (vs OTLP profile signal)** — OTel 의 profile signal 은 alpha. 분석 도구 (JMC / async-profiler) 가 현재 모두 file 기반 — 그쪽 ecosystem 에 맞춤. 추후 OTLP profile 이 stable 화 되면 exporter 추가 검토 (ADR-015 후속).
+- **continuous + ad-hoc dump 병행** — continuous 는 미리 알 수 없는 사고를 위한 보험, ad-hoc 은 지금 일어나는 사고를 즉시 떨궈 보기 위한 수단. 알람과 동시에 운영자가 dump 트리거.

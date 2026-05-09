@@ -106,14 +106,14 @@ class AdaptiveLimiterTests {
         AdaptiveLimiter limiter = newLimiter(20, 1, 100);
         int initialLimit = limiter.currentLimit();
 
-        // 여러 cycle 의 onDropped — backend 가 망가지고 있다는 신호.
+        // 여러 cycle 의 onDropped — backend 가 부하를 못 받는 신호.
         for (int i = 0; i < 50; i++) {
             AdaptiveLimiter.Listener l = limiter.acquire();
             sleepBriefly(); // RTT 측정용 짧은 latency
             l.onDropped();
         }
 
-        // Gradient2 의 정확한 수치는 라이브러리 구현에 따라 변동 — 줄었다는 *방향성* 만 단언.
+        // Gradient2 의 정확한 수치는 라이브러리 구현에 따라 변동 — 줄었다는 방향성만 단언.
         assertThat(limiter.currentLimit()).isLessThanOrEqualTo(initialLimit);
     }
 

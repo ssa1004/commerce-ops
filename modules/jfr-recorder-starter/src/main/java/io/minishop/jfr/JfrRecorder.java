@@ -34,7 +34,7 @@ import java.util.stream.Stream;
  * always-on JFR 레코더. 한 {@link Recording} 을 띄워두고 {@code rollover} 주기마다 dump → 새
  * Recording 시작을 반복한다.
  *
- * <p>운영 데이터에서 검증된 패턴 (Datadog Continuous Profiler / NHN APM / 라인 LINE Profiler):
+ * <p>continuous profiling 의 일반 패턴:
  * <ol>
  *   <li>continuous Recording (한 번 시작해서 영구 켜둠) — 멈췄다 켰다 하면 그 사이의 데이터가 없다.</li>
  *   <li>chunk 를 일정 주기로 dump → 디스크/스토리지 — 사후 분석 가능한 시간 윈도우 확보.</li>
@@ -44,8 +44,8 @@ import java.util.stream.Stream;
  * </ol>
  *
  * <p>왜 직접 {@link Recording} 을 쓰지 않고 한 번 더 감싸는가: rollover, ad-hoc dump, sensitive
- * event filter, 메트릭 노출 등 *운영 패턴* 을 모듈로 묶어 각 서비스에서 의존성만 추가하면 동작
- * 하게 — slow-query-detector 와 같은 철학.
+ * event filter, 메트릭 노출 등 운영 패턴을 모듈로 묶어 각 서비스에서 의존성만 추가하면 동작하게
+ * — slow-query-detector 와 같은 철학.
  */
 public class JfrRecorder {
 
@@ -63,7 +63,7 @@ public class JfrRecorder {
 
     /**
      * sensitive event filter — JFR 이 기본으로 켜는 이벤트 중 host/address/path 같은 PII 가 들어
-     * 갈 가능성이 있는 것들. 운영 표준은 이걸 *발생 시점* 에 끄는 것 (chunk 에 안 들어가게).
+     * 갈 가능성이 있는 것들. 발생 시점에 꺼서 chunk 에 아예 들어가지 않게 한다.
      *
      * <p>SocketRead/Write 의 host/port 는 외부 의존 디버깅에 유용하지만, 사용자 트래픽이 직접 찍힐
      * 위험이 있는 환경에선 보호 우선 — 감사 비용보다 사고 비용이 크다.
@@ -81,7 +81,7 @@ public class JfrRecorder {
     private final ScheduledExecutorService scheduler;
     /**
      * 업로드 전용 executor — 별도 스레드. 이유:
-     *   1) JFR rollover 가 *block 되면 안 됨* — 다음 chunk 의 시작이 늦어진다.
+     *   1) JFR rollover 가 block 되면 안 됨 — 다음 chunk 의 시작이 늦어진다.
      *   2) 업로드는 네트워크 I/O 라 RTT 가 크고 retry 가 들어갈 수 있음.
      *   3) 직렬 single-thread — 동시에 여러 업로드가 같은 컨테이너 NIC 를 점유하지 않게.
      *      (chunk 는 5분마다 1개라 직렬로도 충분.)
@@ -130,7 +130,7 @@ public class JfrRecorder {
     /**
      * Recording 시작 + 주기적 rollover scheduling. 멱등 — 두 번 호출돼도 한 번만 시작한다.
      *
-     * <p>실패 케이스에서 *예외를 throw 하지 않는다* — JFR 은 컨테이너 환경/플랫폼 (예: 일부 GraalVM
+     * <p>실패 케이스에서 예외를 throw 하지 않는다 — JFR 은 컨테이너 환경/플랫폼 (예: 일부 GraalVM
      * native image) 에서 비활성일 수 있는데, 그 때문에 사용자 앱 부팅이 깨지면 안 된다. 메트릭과
      * WARN 로그로만 알린다.
      */
@@ -163,8 +163,8 @@ public class JfrRecorder {
         started = false;
         if (rolloverTask != null) rolloverTask.cancel(true);
         scheduler.shutdownNow();
-        // 업로드 큐는 *graceful* 로 비워준다 — 마지막 chunk 가 아직 안 올라간 채 종료되면
-        // 그게 가장 가치 있는 데이터일 가능성이 높다 (사고 시점). awaitTermination 수 초.
+        // 업로드 큐는 graceful 로 비워준다 — 마지막 chunk 가 아직 안 올라간 채 종료되면 그게
+        // 가장 가치 있는 데이터일 가능성이 높다 (사고 시점). awaitTermination 수 초.
         uploadExecutor.shutdown();
         try {
             if (!uploadExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
@@ -186,7 +186,7 @@ public class JfrRecorder {
     }
 
     /**
-     * ad-hoc dump — 알람이 떴을 때 운영자가 즉시 *지금까지 누적된* 데이터를 파일로 떨굴 때.
+     * ad-hoc dump — 알람이 떴을 때 운영자가 즉시 지금까지 누적된 데이터를 파일로 떨굴 때.
      * 현재 Recording 을 멈추지 않는다 (rollover 와 다른 목적).
      *
      * @param tag 파일명에 끼워넣는 임의의 태그. 알람 이름/case-study 슬러그 등.
@@ -272,9 +272,9 @@ public class JfrRecorder {
             applyRetention();
             count("rollover", "ok");
 
-            // chunk 가 디스크에 떨어진 직후 *비동기로* 원격 사본을 만든다. 컨테이너가 죽거나
-            // 디스크가 손상돼도 원격엔 남도록. 업로드 자체가 실패해도 chunk 는 디스크의 retention
-            // 까지 살아있어 복구 경로가 두 단계.
+            // chunk 가 디스크에 떨어진 직후 비동기로 원격 사본을 만든다. 컨테이너가 죽거나 디스크가
+            // 손상돼도 원격엔 남도록. 업로드 자체가 실패해도 chunk 는 디스크의 retention 까지
+            // 살아있어 복구 경로가 두 단계.
             scheduleUpload(file);
         } catch (Exception e) {
             log.warn("JFR rollover failed: {}", e.getMessage());
@@ -284,7 +284,7 @@ public class JfrRecorder {
 
     /**
      * 업로드 task — uploadExecutor 의 단일 스레드에서 직렬 처리. 실패해도 retention 까지의
-     * 디스크 보유분이 살아있으므로 *지금 실패한 chunk 는 그대로 두고 다음 rollover 로 진행*.
+     * 디스크 보유분이 살아있으므로 지금 실패한 chunk 는 그대로 두고 다음 rollover 로 진행한다.
      * 일반적인 retry queue 가 적합한 자리지만, 본 단계에서는 단순화 — 운영 부담 (failure
      * tracking 으로 디스크가 차는 위험) 보다 단순 idempotent 가 안전하다고 봄.
      */
@@ -296,7 +296,7 @@ public class JfrRecorder {
             } catch (JfrChunkUploader.UploadException e) {
                 log.warn("JFR chunk upload failed: {} ({})", chunk.getFileName(), e.getMessage());
             } catch (Throwable t) {
-                // SDK 가 던지는 예상 외 예외도 흡수 — 업로드 task 는 *절대* uploadExecutor 를
+                // SDK 가 던지는 예상 외 예외도 흡수 — 업로드 task 는 절대 uploadExecutor 를
                 // 죽이면 안 됨 (다음 chunk 도 같은 executor 를 쓴다).
                 log.warn("JFR chunk upload threw unexpected error: {}", t.toString());
             }
@@ -307,7 +307,7 @@ public class JfrRecorder {
     private void applyRetention() {
         List<Path> chunks = listChunks();
         if (chunks.size() <= props.maxRetained()) return;
-        // listChunks 는 *새 것 먼저* 라 maxRetained 이후가 삭제 대상.
+        // listChunks 는 새 것 먼저 정렬되어 있으므로 maxRetained 이후가 삭제 대상.
         List<Path> toDelete = chunks.subList(props.maxRetained(), chunks.size());
         for (Path p : toDelete) {
             try {

@@ -9,7 +9,7 @@ sum by (application) (increase(n_plus_one_total[5m])) > 0
 
 > `slow-query-detector` 모듈 ([modules/slow-query-detector](../../modules/slow-query-detector/)) 이
 > 같은 정규화 SQL (리터럴을 `?` 로 치환해 모양만 비교) 이 임계 (기본 5) 번 반복될 때 한 번 카운터를 올린다.
-> "5번 도달 시 한 번 카운트" 방식이라 같은 N+1 이 1000번 실행돼도 카운트는 1 — *고유 N+1 사례 발생* 만 잡아낸다.
+> "5번 도달 시 한 번 카운트" 방식이라 같은 N+1 이 1000번 실행돼도 카운트는 1 — 고유 N+1 사례 발생만 잡아낸다.
 
 ## Impact
 - 단기: 응답 시간이 N 에 비례해 증가. p99 알람과 함께 발화하는 일이 많다.
@@ -25,7 +25,7 @@ sum by (application) (increase(n_plus_one_total[5m])) > 0
    {service_name="$service"} |= "Suspected N+1"
    ```
    메시지 형식: `Suspected N+1 (5 executions): <정규화 SQL>` + 호출자 stack 일부.
-   stack 에서 Spring/Hibernate 프레임을 걸러내고 *사용자 코드 프레임* (예: `OrderController#list`, `OrderService#loadOrders`) 만 보면 어느 컨트롤러/서비스/리포지토리 메서드가 트리거인지 바로 식별된다.
+   stack 에서 Spring/Hibernate 프레임을 걸러내고 사용자 코드 프레임 (예: `OrderController#list`, `OrderService#loadOrders`) 만 보면 어느 컨트롤러/서비스/리포지토리 메서드가 트리거인지 바로 식별된다.
 
 2. **Slow Query & N+1 대시보드** — `n_plus_one_total` 의 증가율 (rate) 이 어느 application 에서 올라가는지 확인.
 
@@ -41,7 +41,7 @@ sum by (application) (increase(n_plus_one_total[5m])) > 0
 
 - `@EntityGraph(attributePaths = "items")` 또는 fetch join (한 쿼리에서 연관 엔티티까지 같이 SELECT) 으로 한 번에 가져오기
 - 페이징 + 컬렉션 fetch 충돌 (Hibernate 가 페이징을 메모리에서 처리하게 되는 경고) 은 별도 처리 필요 (`@BatchSize` 로 N 개씩 묶어 IN 절 또는 `@Fetch(SUBSELECT)` 로 서브쿼리)
-- 응답에서 그 컬렉션이 *정말* 필요한지 점검 — 필요 없으면 별도 엔드포인트로 분리하거나 projection (필요 컬럼만 뽑는 DTO) 사용
+- 응답에서 그 컬렉션이 정말 필요한지 점검 — 필요 없으면 별도 엔드포인트로 분리하거나 projection (필요 컬럼만 뽑는 DTO) 사용
 - 대규모 배치 read 는 raw SQL 또는 JPQL constructor expression (DTO 로 직접 매핑되는 JPQL 표현) 이 더 빠를 수 있음
 
 ## Post-mortem
@@ -50,4 +50,4 @@ sum by (application) (increase(n_plus_one_total[5m])) > 0
 - 트리거된 코드 위치 (PR 링크)
 - N+1 발생 시 응답 시간 비교 (수정 전 vs 후)
 - `@EntityGraph` vs fetch join vs subselect 어떤 방법을 골랐고 왜
-- 알람으로 잡은 vs 코드 리뷰로 잡은 — 둘 다 가치 있음. 알람은 *놓친 케이스의 마지막 그물*
+- 알람으로 잡은 vs 코드 리뷰로 잡은 — 둘 다 가치 있음. 알람은 놓친 케이스를 받쳐주는 마지막 안전망.

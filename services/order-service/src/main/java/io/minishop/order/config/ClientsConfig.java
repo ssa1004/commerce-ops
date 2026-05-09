@@ -67,8 +67,8 @@ public class ClientsConfig {
      * interceptor chain 등록 순서:
      * <ol>
      *   <li><b>RetryInterceptor</b> (바깥) — transient 오류에 retry. 매 attempt 마다 chain 의 안쪽
-     *       (limiter) 을 다시 통과 → backend 가 망가지는 동안 limiter 한도가 줄어 retry 도 함께
-     *       제한됨. 두 메커니즘이 직교적으로 결합.</li>
+     *       (limiter) 을 다시 통과 → backend 가 부하를 못 받는 동안 limiter 한도가 줄어 retry 도
+     *       함께 제한됨. 두 메커니즘이 직교적으로 결합.</li>
      *   <li><b>AdaptiveLimiterInterceptor</b> (안쪽) — 동시 진행 중 요청 수 제어.</li>
      * </ol>
      * <p>Spring 의 ClientHttpRequestInterceptor chain 은 list 순서대로 호출되며, 첫 번째가 가장

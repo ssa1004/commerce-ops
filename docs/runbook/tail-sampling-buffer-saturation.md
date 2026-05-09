@@ -2,7 +2,7 @@
 
 ## When this fires
 
-OTel Collector 의 tail-based sampling 버퍼가 한도에 닿아 trace 가 *의사결정 전에* drop 되고 있을 때.
+OTel Collector 의 tail-based sampling 버퍼가 한도에 닿아 trace 가 의사결정 전에 drop 되고 있을 때.
 
 ```promql
 sum(rate(otelcol_processor_tail_sampling_new_trace_id_received[5m]))
@@ -18,7 +18,7 @@ sum(rate(otelcol_processor_refused_spans{processor="tail_sampling"}[5m])) > 0
 
 > tail_sampling 은 `decision_wait` (현재 10s) 동안 trace 의 모든 span 을 메모리에 들고 있는다.
 > 동시 trace 수가 `num_traces` (현재 50000) 를 넘으면 가장 오래된 trace 부터 강제 evict 된다.
-> evict 된 trace 는 *의사결정 자체를 못 받고* 사라진다 — error / slow 라도 보존되지 않는다.
+> evict 된 trace 는 의사결정 자체를 못 받고 사라진다 — error / slow 라도 보존되지 않는다.
 
 ## Impact
 
@@ -40,7 +40,7 @@ sum(rate(otelcol_processor_refused_spans{processor="tail_sampling"}[5m])) > 0
    ```promql
    sum by (policy, sampled) (rate(otelcol_processor_tail_sampling_count_traces_sampled[5m]))
    ```
-   `errors` 가 평소 대비 10배 이상이면 *진짜 error 가 늘어난 것* — 이건 sampling 문제가 아니라 *서비스 문제* (e.g. order-error-rate-spike 알람도 같이 떠야 정상).
+   `errors` 가 평소 대비 10배 이상이면 진짜 error 가 늘어난 것 — 이건 sampling 문제가 아니라 서비스 문제 (e.g. order-error-rate-spike 알람도 같이 떠야 정상).
 
 3. **collector 메모리** — `memory_limiter` 가 활성화됐는지:
    ```promql
@@ -51,7 +51,7 @@ sum(rate(otelcol_processor_refused_spans{processor="tail_sampling"}[5m])) > 0
 ### 가설 트리
 
 - **트래픽 폭증 (정상 사용자 증가)** → `num_traces` 상향 (50k → 100k 등). 메모리도 비례 증가하므로 collector container memory 도 같이 올림.
-- **decision_wait 너무 김** → 우리 시스템 p99 가 10s 안쪽이면 안전. payment 의 in-doubt 윈도우 (5s 한도) 가 길어지면 trace 도 같이 길어진다 — `decision_wait` 를 줄이지 말고 *p99 자체를 줄이는 게* 정도.
+- **decision_wait 너무 김** → 우리 시스템 p99 가 10s 안쪽이면 안전. payment 의 in-doubt 윈도우 (5s 한도) 가 길어지면 trace 도 같이 길어진다 — `decision_wait` 를 줄이지 말고 p99 자체를 줄이는 게 정도.
 - **새 instrumentation 으로 span 수 폭증** → 한 trace 당 span 수 × num_traces 가 메모리. 새 라이브러리 자동계측이 켜진 직후라면 그쪽 noise span 을 attribute filter 로 줄임.
 - **expected_new_traces_per_sec 가 실제와 너무 다름** → 이 값은 hint 일 뿐 hard limit 은 아니지만, hash table sizing 에 쓰이므로 실측치의 1.5~2x 로 두는 게 좋음.
 
@@ -70,11 +70,11 @@ sum(rate(otelcol_processor_refused_spans{processor="tail_sampling"}[5m])) > 0
 
 ### 장기 (PR 단위)
 
-- collector horizontal scale — tail_sampling 은 *동일 trace 의 모든 span 이 같은 collector* 로 가야 동작한다. 단순 round-robin 으로는 불가능하고 `loadbalancing` exporter 의 routing key (= trace_id) 가 필요. 데모 환경엔 단일 collector 로 충분하지만 운영은 보통 2계층 구성:
+- collector horizontal scale — tail_sampling 은 동일 trace 의 모든 span 이 같은 collector 로 가야 동작한다. 단순 round-robin 으로는 불가능하고 `loadbalancing` exporter 의 routing key (= trace_id) 가 필요. 데모 환경엔 단일 collector 로 충분하지만 운영은 보통 2계층 구성:
   ```
   [SDK] → [LB collector (loadbalancing exporter)] → [tail_sampling collector pool] → [Tempo]
   ```
-- Datadog / NewRelic 처럼 *클라이언트 측 sampler* 는 그대로 100% 보내고 collector 가 모든 결정을 잡게 하는 게 정석 — 우리도 이미 SDK 는 100% 송신.
+- 클라이언트 측 sampler 는 그대로 100% 보내고 collector 가 모든 결정을 잡게 하는 게 정석 — 우리도 이미 SDK 는 100% 송신.
 
 ## Post-mortem
 
@@ -82,10 +82,10 @@ sum(rate(otelcol_processor_refused_spans{processor="tail_sampling"}[5m])) > 0
 - 어떤 policy 가 saturate 되었는가 (errors? slow? 둘 다?)
 - 트리거 — 트래픽 자연 증가 / 새 배포 / 외부 사고
 - num_traces / decision_wait 를 어떻게 조정했고 그 이유
-- saturation 동안 *놓친 trace* 를 다른 신호 (메트릭 5xx 카운터, 로그) 로 어떻게 복원했는지
+- saturation 동안 놓친 trace 를 다른 신호 (메트릭 5xx 카운터, 로그) 로 어떻게 복원했는지
 - horizontal scale 결정이 필요했는지 — 이 경계가 보통 "다음 phase" 의 신호
 
 ## 관련
 
-- ADR-014 — Tail-based sampling (이 결정의 *왜*).
+- ADR-014 — Tail-based sampling (이 결정의 배경).
 - 알람: `tail-sampling-buffer-saturation` (이 runbook).

@@ -17,7 +17,7 @@ duration: ~45m
 order 는 그 호출을 "실패" 로 받아 보상 (잡아둔 재고 해제) + Order(FAILED) 처리했는데, payment-service 쪽 트랜잭션은 이미 커밋되어 **PaymentStatus=SUCCESS** 로 남아 있었다.
 **Order 는 FAILED, Payment 는 SUCCESS** — 같은 `orderId` 에 대해 두 서비스가 서로 다른 진실을 갖게 됐다.
 
-이건 분산 시스템에서 잘 알려진 *"in-doubt"* (호출자는 끊겼는데 피호출자는 작업을 끝내버려 결과를 알 수 없는 구간) 문제. 우리 timeout 설계에 빈틈이 있었다.
+이건 분산 시스템에서 잘 알려진 "in-doubt" (호출자는 끊겼는데 피호출자는 작업을 끝내버려 결과를 알 수 없는 구간) 문제. 우리 timeout 설계에 빈틈이 있었다.
 
 ---
 
@@ -182,7 +182,7 @@ mini-shop:
 1. **호출 체인의 timeout 은 단조 감소해야 한다.**
    호출자 ≥ 피호출자. 같으면 in-doubt 가 거의 항상 발생, 호출자 < 피호출자면 더 심함.
 2. **3xx/4xx/5xx 로 분류 안 되는 결과가 항상 존재한다 — "모름".**
-   Read timeout, ConnectException 같은 *I/O 실패* 는 "성공인지 실패인지 모름" 이다. 이걸 "실패" 로 단정하고 보상을 쏘면 우리처럼 부정합이 난다.
+   Read timeout, ConnectException 같은 I/O 실패는 "성공인지 실패인지 모름" 이다. 이걸 "실패" 로 단정하고 보상을 쏘면 우리처럼 부정합이 난다.
 3. **부정합 위험을 받아들이려면, 모니터링으로 잡을 수 있어야 한다.**
    여기서는 (orderId 같은 외부 키로) order.status ≠ payment.status 인 행을 주기적으로 스캔하는 reconciliation job (정기 정합성 점검 잡) 이 있어야 한다. 후속 작업으로 등록.
 4. **이런 경계 케이스가 동기 호출의 본질적 단점이다.** Phase 2 Step 3b 로 가는 이유는 이런 함정을 구조적으로 피하기 위함.

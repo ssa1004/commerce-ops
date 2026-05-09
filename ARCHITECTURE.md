@@ -74,11 +74,11 @@ Outbox Poller (별도 스레드)
 | 결제 서비스 장애 | 502 | `PAYMENT_INFRA` | 앞서 잡아둔 재고 모두 해제 |
 | 재고 서비스 장애 | 503 | `INVENTORY_INFRA` | 가능한 만큼 해제 |
 
-> 동기 호출의 본질적인 함정 한 가지는 [case-studies/2026-05-07-payment-timeout-race.md](case-studies/2026-05-07-payment-timeout-race.md)에 회고로 정리되어 있습니다. 호출자/피호출자의 timeout 이 같으면 *in-doubt* (호출자는 끊겼는데 피호출자는 작업을 끝내버려 결과를 알 수 없는) 윈도우가 생기는 문제.
+> 동기 호출의 본질적인 함정 한 가지는 [case-studies/2026-05-07-payment-timeout-race.md](case-studies/2026-05-07-payment-timeout-race.md)에 회고로 정리되어 있습니다. 호출자/피호출자의 timeout 이 같으면 in-doubt (호출자는 끊겼는데 피호출자는 작업을 끝내버려 결과를 알 수 없는) 윈도우가 생기는 문제.
 
 ### 향후: 완전 비동기 choreography (Phase 2 Step 3b)
 
-choreography (안무) 는 어느 한 서비스가 흐름을 지휘하지 않고, 각 서비스가 이벤트를 듣고 자기 일을 한 뒤 다음 이벤트를 발행하는 방식입니다. POST /orders 가 202 Accepted (요청은 받았고 비동기로 처리한다) 를 즉시 반환하고, 이후 흐름은 Kafka 이벤트로만 진행되는 형태. 위 케이스 스터디에서 발견한 timeout 함정을 구조적으로 회피하는 동기 부여가 됩니다.
+choreography (안무) 는 어느 한 서비스가 흐름을 지휘하지 않고, 각 서비스가 이벤트를 듣고 자기 일을 한 뒤 다음 이벤트를 발행하는 방식입니다. POST /orders 가 202 Accepted (요청은 받았고 비동기로 처리한다) 를 즉시 반환하고, 이후 흐름은 Kafka 이벤트로만 진행되는 형태. 위 케이스 스터디에서 발견한 timeout 함정을 구조적으로 회피하는 것이 도입 동기입니다.
 
 ---
 
@@ -97,11 +97,11 @@ choreography (안무) 는 어느 한 서비스가 흐름을 지휘하지 않고,
 
 ## 설계 결정 (요약)
 
-자세한 *왜*는 [docs/decision-log.md](docs/decision-log.md)에 ADR로 기록 (현재 10개). 핵심:
+자세한 배경은 [docs/decision-log.md](docs/decision-log.md)에 ADR로 기록 (현재 10개). 핵심:
 
 - **Java 21 + Spring Boot 3.5** — Virtual Threads (운영체제 스레드보다 훨씬 가벼운 JVM 차원의 스레드 — 동시성 비용을 크게 낮춤) 등 신규 문법 활용
 - **서비스별 DB 분리** — 마이크로서비스 원칙 + 독립 진화 (한 서비스의 스키마 변경이 다른 서비스를 막지 않게)
-- **OTel 표준 채택** — 벤더 락인 (특정 회사 도구에 코드가 묶이는 상태) 회피, 트레이스/로그만 OTel 경로 (메트릭은 Prometheus 가 직접 긁어옴)
+- **OTel 표준 채택** — 벤더 락인 (특정 도구에 코드가 묶이는 상태) 회피, 트레이스/로그만 OTel 경로 (메트릭은 Prometheus 가 직접 긁어옴)
 - **Tempo (vs Jaeger)** — Grafana 스택 통합 + S3 호환 스토리지 (저비용 객체 저장소를 트레이스 백엔드로 사용)
 - **OTel Spring Boot starter (vs Java agent)** — agent (JVM 시작 시 `-javaagent=...` 로 붙여 코드 변경 없이 모든 클래스를 후킹하는 방식) 는 운영 표준이지만 데모 환경엔 starter가 더 친화적. K8s 단계에서 agent 옵션 재검토
 - **Outbox는 order만** — payment/inventory 는 트랜잭션 커밋 직후 발행, 운영 비용 trade-off 명시

@@ -44,7 +44,7 @@ Phase 3 Step 3 — tail-based sampling 적용 후 추가:
 - [tail-sampling-buffer-saturation](tail-sampling-buffer-saturation.md) — OTel Collector tail_sampling 버퍼가 한도에 닿아 trace 가 의사결정 전에 drop 됨
 
 Phase 3 Step 4 — JFR continuous profiling 적용 후 추가:
-- [jfr-analysis](jfr-analysis.md) — runbook 이 아닌 *운영자 가이드* — JFR chunk 를 어떻게 가져오고 (JMC / async-profiler / programmatic) 어떻게 분석하는지
+- [jfr-analysis](jfr-analysis.md) — runbook 이 아닌 운영자 가이드 — JFR chunk 를 어떻게 가져오고 (JMC / async-profiler / programmatic) 어떻게 분석하는지
 
 Phase 3 Step 5 — adaptive concurrency limiter 적용 후 추가:
 - [client-concurrency-limit-saturated](client-concurrency-limit-saturated.md) — order-service 의 client adaptive limiter 가 minLimit 근처까지 좁혀짐 (backend 가 느려져 cascade 차단 작동 중)

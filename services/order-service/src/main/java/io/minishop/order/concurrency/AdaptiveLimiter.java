@@ -13,9 +13,9 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Netflix concurrency-limits 의 {@link SimpleLimiter} 를 *서비스마다 독립* 한도로 감싼 wrapper.
+ * Netflix concurrency-limits 의 {@link SimpleLimiter} 를 서비스마다 독립 한도로 감싼 wrapper.
  *
- * <p>알고리즘 — {@link Gradient2Limit}: TCP Vegas 와 같은 *latency 기반 적응* 방식.
+ * <p>알고리즘 — {@link Gradient2Limit}: TCP Vegas 와 같은 latency 기반 적응 방식.
  * <ol>
  *   <li>최근 RTT (round-trip time) 분포의 long-term 평균 (rttNoLoad) 과 short-term 평균 (rtt) 을 비교.</li>
  *   <li>두 값의 비율 (gradient) 이 1.0 근처면 backend 가 안정 → limit 천천히 증가 (probe).</li>
@@ -23,11 +23,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  *       즉시 축소 (multiplicative decrease).</li>
  * </ol>
  *
- * <p>=> backend 가 느려지면 *호출자가 줄을 서지 않고* 즉시 실패한다 (cascade 차단). backend 가
+ * <p>=> backend 가 느려지면 호출자가 줄을 서지 않고 즉시 실패한다 (cascade 차단). backend 가
  * 회복되면 latency 가 정상화되고 limit 도 다시 증가한다 — 사람이 손대지 않아도 자동.
  *
- * <p>Resilience4j 의 Bulkhead 는 *정적* 한도 — backend 가 갑자기 느려져도 똑같은 N 명이 들어가서
- * cascade 가 그대로 발생. AWS / Netflix / 카카오의 backend mesh 가 adaptive 를 쓰는 이유.
+ * <p>Resilience4j 의 Bulkhead 는 정적 한도 — backend 가 갑자기 느려져도 똑같은 N 명이 들어가서
+ * cascade 가 그대로 발생. adaptive 한도가 필요한 이유.
  */
 public class AdaptiveLimiter {
 
@@ -71,9 +71,9 @@ public class AdaptiveLimiter {
     /**
      * 한 요청에 대한 acquire. 한도 초과면 {@link LimitExceededException} 즉시.
      *
-     * <p>리턴된 {@link Listener} 는 호출자가 *반드시 onSuccess / onIgnore / onDropped 중 하나* 를 호출
-     * 해서 latency 측정을 알고리즘에 돌려주어야 한다. {@link #execute(java.util.concurrent.Callable)}
-     * 헬퍼가 이걸 try-finally 로 감싸준다.
+     * <p>리턴된 {@link Listener} 는 호출자가 onSuccess / onIgnore / onDropped 중 하나를 반드시
+     * 호출해서 latency 측정을 알고리즘에 돌려주어야 한다.
+     * {@link #execute(java.util.concurrent.Callable)} 헬퍼가 이걸 try-finally 로 감싸준다.
      */
     public Listener acquire() {
         Optional<Limiter.Listener> opt = limiter.acquire(null);
