@@ -13,7 +13,7 @@
 ## 설계 원칙
 
 1. **AutoConfiguration 우선** — `META-INF/spring/...AutoConfiguration.imports` 로 의존성만 추가하면 자동 활성화
-2. **합리적 기본값 (Opinionated Defaults)** — 즉시 가치 제공, 필요시 properties 로 끄기
+2. **합리적 기본값 (Opinionated Defaults)** — 의존성 추가만으로 바로 동작, 필요시 properties 로 끄기
 3. **Trace ID 자동 처리 (Zero-touch on Trace ID)** — 사용자가 trace 전파 (서비스 간에 trace 컨텍스트가 따라가도록 헤더에 싣는 일) 를 신경 쓰지 않게
 4. **공개 API 최소화** — 호환성을 깰 표면적을 좁게
 
