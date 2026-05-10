@@ -1,0 +1,65 @@
+{{/*
+umbrella-level Ingress — 단일 호스트에서 path 기반으로 3 서비스 fan-out.
+sub-chart 자체에는 ingress 를 두지 않고 umbrella 가 일괄 관리한다 (각 서비스가 자기 ingress
+를 갖게 두면 same-host 분기에 conflict / annotation race 가 잘 생긴다).
+
+  /api/v1/orders/*    → order-service
+  /api/v1/payments/*  → payment-service
+  /api/v1/inventory/* → inventory-service
+  /actuator/*         → 모든 서비스에 공통이므로 외부 노출하지 않는 게 원칙. 필요 시
+                        global.ingress 에 별도 host 로 분리 권장.
+*/}}
+{{- if .Values.global.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app.kubernetes.io/name: {{ .Release.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/part-of: mini-shop
+  {{- with .Values.global.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.global.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.global.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.global.ingress.host | quote }}
+      http:
+        paths:
+          {{- if (index .Values "order-service" "enabled") }}
+          - path: /api/v1/orders
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-order-service
+                port:
+                  number: {{ (index .Values "order-service" "service" "port") }}
+          {{- end }}
+          {{- if (index .Values "payment-service" "enabled") }}
+          - path: /api/v1/payments
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-payment-service
+                port:
+                  number: {{ (index .Values "payment-service" "service" "port") }}
+          {{- end }}
+          {{- if (index .Values "inventory-service" "enabled") }}
+          - path: /api/v1/inventory
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-inventory-service
+                port:
+                  number: {{ (index .Values "inventory-service" "service" "port") }}
+          {{- end }}
+{{- end }}
