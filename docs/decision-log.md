@@ -366,3 +366,29 @@
     1. `outbox.publish{outcome=failed}` 가 비정상적으로 많아지면 backend 장애 vs 영구 직렬화 결함 (payload format 등) 의 구분이 필요. 현재는 lastError 컬럼으로만 사후 조사.
     2. FAILED 행의 archival/replay 도구. 운영자가 `lastError` 를 보고 fix 한 뒤 status 를 PENDING 으로 되돌려 재시도하는 흐름.
     3. `attempts` 가 maxAttempts 에 도달하기 전에도 backoff (exponential) 를 적용해 같은 행의 연속 retry 가 polling 주기를 잡아먹지 않게.
+
+## ADR-024 — JFR retention 은 카운트 cap + 총 크기 cap 의 두 단계
+
+- **결정**:
+  - `JfrRecorder.applyRetention()` 가 두 단계 cap 을 차례로 적용.
+    1. **카운트 cap** (`maxRetained`, 기본 24) — 가장 오래된 chunk 부터 초과분 삭제. 평소 부하 / default 설정에서는 이 단계만 발동.
+    2. **총 크기 cap** (`maxTotalSize`, 기본 500MB, `DataSize` 형식) — 살아남은 chunk 들의 합이 초과면 가장 오래된 것부터 추가 삭제. *가장 새 chunk 1개는 무조건 보존* (사고 시점 데이터 우선) — 단일 chunk 가 limit 보다 크면 WARN 으로만 알린다.
+  - 메트릭 — 카운트 cap 으로 삭제되면 `jfr.rollover.events{kind=retention,outcome=deleted}`, 크기 cap 으로 삭제되면 `outcome=size_evicted` 로 분리. 어느 cap 이 동작 중인지 운영 대시보드에서 즉시 보임.
+- **배경**:
+  - 기존 retention 은 카운트 (`maxRetained=24`) 만 갖고 있었다. default 설정 + 5분 rollover 의 평균 chunk ~10MB 기준으로는 약 240MB 안에 들어와 보통 디스크는 안전.
+  - 그러나 chunk 크기가 *통제 불가* 변수: profile 설정으로 ~3배, 큰 heap (allocation events 많음) 으로 ~2배, burst load 의 thread/lock 이벤트 폭증으로 ~5배까지 확대 가능. 24개 × 50MB = 1.2GB → 컨테이너의 emptyDir 볼륨 (보통 1~5GB) 을 단일 chunk 종류가 모두 잡아먹는 사고 가능.
+  - JFR chunk 디스크 풀은 *조용한 사고* — JFR 자체는 디스크 풀에 저항해 다음 chunk dump 만 실패하지만, 같은 볼륨을 쓰는 application 로그 / temp 파일 / docker overlay 가 같이 죽는다. JFR 이 다른 시스템을 죽이는 자리.
+  - JFR 의 `Recording.setMaxAge` / `setMaxSize` 는 *한 Recording 내부* 의 ring buffer 만 통제 — chunk 가 dump 된 *후의* 디스크 사이즈는 라이브러리가 책임지지 않는다. 자체 retention 안에서 처리해야 한다.
+- **대안**:
+  1. **카운트만 유지 + maxRetained 를 더 작게** — 단순. 그러나 평소 부하에서 보존 윈도우가 짧아져 (24→6 같은 식) 사고 회고 윈도우 자체가 줄어든다. *드물게 큰 chunk* 를 위해 *항상 보존을 짧게* 가는 trade-off.
+  2. **단일 cap (size only)** — 카운트 cap 제거. 평소엔 size 안에 충분히 들어가니 무관하지만, 카운트 ground truth (몇 개 보존되는지) 가 없어 운영 대시보드에서 보존 상태를 *예상 chunk 크기* 와 함께 계산해야 한다. 두 cap 이 모두 있으면 *어느 쪽이 발동했는지* 가 메트릭으로 직접 보임.
+  3. **적응형 (avg chunk size 기반 maxRetained 동적 조정)** — 가장 정확. 그러나 retention 로직이 statefulness 를 갖고 (이전 chunk 사이즈 EMA), 알고리즘 버그 시 지연 사고가 가능. 단순 두 cap 으로 충분.
+  4. **컨테이너 단의 디스크 quota (cgroup, k8s ephemeral-storage limit)** — 외부 강제. 그러나 JFR 이 dump 실패하면 그 쪽 메트릭이 안 올라가고 OOMKilled 로 컨테이너 전체가 죽는다. 라이브러리 안에서 미리 자르는 편이 *graceful degrade* (옛 chunk 잃되 새 chunk 는 보존).
+- **결과**:
+  - **메트릭 분리** — `jfr.rollover.events{outcome=deleted}` (카운트), `outcome=size_evicted` (크기). size_evicted 가 평소 0 이다가 올라가기 시작하면 *chunk 가 평소보다 크게 만들어지고 있음* 의 신호. profile 설정으로 잘못 켜졌거나 burst 부하 진입 시그널로 사용.
+  - **가장 새 chunk 보존 보장** — 단일 chunk 가 limit 보다 크면 WARN 만 찍고 보존. *사고 시점에 가장 가치 있는 데이터를 잃지 않게* 가 우선 — 디스크 풀의 cascade 보다 사고 데이터 손실이 더 큰 비용.
+  - **회귀 테스트 2개** — `retentionEvictsByTotalSizeWhenCountCapIsLoose`, `retentionKeepsLargestNewestEvenWhenItExceedsLimit`. 더미 .jfr 파일을 같은 디렉토리에 끼워 retention 만 격리해 검증 — 실제 JFR Recording 의 chunk 사이즈는 통제 불가라 별도 fixture.
+  - **다음 phase 신호**:
+    1. chunk 사이즈 분포 메트릭 (`jfr.chunk.size.bytes` histogram) — size cap 발동 전 사전 경고.
+    2. `Recording.setMaxSize` 와의 통합 검토 — 한 chunk 의 max 크기를 라이브러리 단에서도 제한하면 두 단계 방어.
+    3. S3 업로드 (ADR-018) 의 chunk 사이즈가 multipart threshold 를 넘는지 자동 판단 — size cap 의 메트릭이 그 결정의 입력.

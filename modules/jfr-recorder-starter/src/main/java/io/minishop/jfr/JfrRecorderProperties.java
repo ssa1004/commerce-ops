@@ -1,6 +1,7 @@
 package io.minishop.jfr;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.util.unit.DataSize;
 
 import java.time.Duration;
 
@@ -14,7 +15,11 @@ import java.time.Duration;
  *
  * <ul>
  *   <li>{@code rollover}: 한 chunk 의 길이. 짧을수록 손실 윈도우 작지만 파일 수 많음.</li>
- *   <li>{@code maxRetained}: 디렉토리에 보존할 최근 chunk 수. 오래된 chunk 는 삭제.</li>
+ *   <li>{@code maxRetained}: 디렉토리에 보존할 최근 chunk *개수*. 오래된 chunk 는 삭제.</li>
+ *   <li>{@code maxTotalSize}: 디렉토리에 보존할 chunk 의 *총 크기* 상한. 카운트 cap 적용 후
+ *       총 합이 이 값을 넘으면 가장 오래된 것부터 추가 삭제. 평소엔 카운트 cap 이 먼저 닿지만,
+ *       burst 부하 / profile 설정 / 큰 heap 등으로 chunk 가 평소보다 커지는 상황에서 디스크
+ *       풀을 차단하는 안전망 (ADR-024).</li>
  *   <li>{@code dumpDirectory}: chunk 가 떨어지는 자리. 운영은 보통 별도 볼륨 (NFS/EBS) 또는
  *       업로드 후 삭제.</li>
  *   <li>{@code settings}: JFR 설정 이름 — "default" (저오버헤드, 운영용) 또는 "profile" (할당
@@ -29,6 +34,7 @@ public record JfrRecorderProperties(
         boolean enabled,
         Duration rollover,
         int maxRetained,
+        DataSize maxTotalSize,
         String dumpDirectory,
         String settings,
         boolean maskSensitiveEvents
@@ -43,6 +49,12 @@ public record JfrRecorderProperties(
             // 24개 = 5분 × 24 = 2시간. 대시보드/리소스 알람을 보고 사후 분석 시작하기까지 평균
             // 30분 ~ 1시간이라는 SRE 경험치가 있어 2배 버퍼.
             maxRetained = 24;
+        }
+        if (maxTotalSize == null || maxTotalSize.toBytes() <= 0) {
+            // 500MB — default 설정 + 5분 rollover 의 평균 chunk 가 ~10MB 이므로 카운트 cap (24개,
+            // 약 240MB) 보다 약 2배 여유. 평소엔 카운트가 먼저 닿고, profile 설정으로 chunk 가
+            // 평소의 5배가 되는 단발성 burst 에서만 size cap 이 발동되는 안전망 자리.
+            maxTotalSize = DataSize.ofMegabytes(500);
         }
         if (dumpDirectory == null || dumpDirectory.isBlank()) {
             dumpDirectory = "/tmp/jfr";

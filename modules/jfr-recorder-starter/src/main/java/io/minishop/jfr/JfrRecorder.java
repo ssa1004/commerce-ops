@@ -303,20 +303,74 @@ public class JfrRecorder {
         });
     }
 
-    /** maxRetained 초과 chunk 삭제. 가장 오래된 것부터. */
+    /**
+     * Chunk retention — 두 단계 cap 을 차례로 적용.
+     * <ol>
+     *   <li><b>카운트 cap</b> — {@code maxRetained} 초과 chunk 를 가장 오래된 것부터 삭제. 평소
+     *       부하 / default 설정에서는 이 단계만 발동.</li>
+     *   <li><b>총 크기 cap</b> — 살아남은 chunk 들의 총 합이 {@code maxTotalSize} 초과면 가장
+     *       오래된 것부터 추가 삭제 (가장 새 chunk 1개는 항상 보존 — 사고 시점 데이터 우선).
+     *       burst 부하 / profile 설정 / 큰 heap 으로 chunk 크기가 평소보다 커지는 상황에서
+     *       디스크 풀을 차단하는 안전망.</li>
+     * </ol>
+     * <p>크기 측정은 mtime 기준 정렬 후 한 번에 수행 — 같은 디렉토리를 두 번 listChunks 하지 않게.
+     */
     private void applyRetention() {
         List<Path> chunks = listChunks();
-        if (chunks.size() <= props.maxRetained()) return;
-        // listChunks 는 새 것 먼저 정렬되어 있으므로 maxRetained 이후가 삭제 대상.
-        List<Path> toDelete = chunks.subList(props.maxRetained(), chunks.size());
-        for (Path p : toDelete) {
-            try {
-                Files.deleteIfExists(p);
-                count("retention", "deleted");
-            } catch (IOException e) {
-                log.warn("JFR retention delete failed for {}: {}", p, e.getMessage());
-                count("retention", "error");
+
+        // 1) 카운트 cap — listChunks 는 새 것 먼저 정렬되어 있으므로 maxRetained 이후가 삭제 대상.
+        if (chunks.size() > props.maxRetained()) {
+            List<Path> toDelete = chunks.subList(props.maxRetained(), chunks.size());
+            for (Path p : toDelete) {
+                deleteSilent(p);
             }
+            chunks = listChunks();
+        }
+
+        // 2) 총 크기 cap — 새 것부터 누적 합산해 maxTotalSize 초과 시점 이후를 삭제.
+        long limit = props.maxTotalSize().toBytes();
+        if (limit <= 0 || chunks.isEmpty()) return;
+        long cumulative = 0L;
+        int keepUntil = chunks.size();
+        for (int i = 0; i < chunks.size(); i++) {
+            long size = sizeOrZero(chunks.get(i));
+            // 가장 새 chunk 1개는 무조건 보존. 단일 chunk 가 limit 보다 크면 삭제하지 않고
+            // WARN 으로만 알림 — 사고 시점 데이터를 잃지 않게.
+            if (i == 0 && size > limit) {
+                log.warn("JFR chunk {} ({} bytes) exceeds maxTotalSize ({} bytes); keeping anyway",
+                        chunks.get(i).getFileName(), size, limit);
+                cumulative = size;
+                continue;
+            }
+            if (cumulative + size > limit) {
+                keepUntil = i;
+                break;
+            }
+            cumulative += size;
+        }
+        if (keepUntil < chunks.size()) {
+            for (Path p : chunks.subList(keepUntil, chunks.size())) {
+                deleteSilent(p);
+                count("retention", "size_evicted");
+            }
+        }
+    }
+
+    private void deleteSilent(Path p) {
+        try {
+            Files.deleteIfExists(p);
+            count("retention", "deleted");
+        } catch (IOException e) {
+            log.warn("JFR retention delete failed for {}: {}", p, e.getMessage());
+            count("retention", "error");
+        }
+    }
+
+    private static long sizeOrZero(Path p) {
+        try {
+            return Files.size(p);
+        } catch (IOException e) {
+            return 0L;
         }
     }
 
