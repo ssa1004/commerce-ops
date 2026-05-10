@@ -1,0 +1,149 @@
+# payment-service sub-chart 단독 default. umbrella 에서 override.
+
+global:
+  image:
+    registry: ghcr.io/ssa1004
+    pullPolicy: IfNotPresent
+    tag: ""
+  imagePullSecrets: []
+  postgres:
+    host: mini-shop-postgres
+    port: 5432
+    user: mini
+    password: mini
+  redis:
+    host: mini-shop-redis
+    port: 6379
+  kafka:
+    bootstrapServers: mini-shop-kafka:9092
+  otel:
+    host: mini-shop-otel-collector
+    httpPort: 4318
+  deployEnv: dev
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+  terminationGracePeriodSeconds: 60
+  preStopSleepSeconds: 10
+  prometheusScrape:
+    enabled: true
+    port: "8080"
+    path: "/actuator/prometheus"
+  networkPolicy:
+    enabled: false
+
+enabled: true
+nameOverride: ""
+fullnameOverride: ""
+
+replicaCount: 2
+image:
+  repository: ""
+  tag: ""
+  pullPolicy: ""
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8082
+  annotations: {}
+
+probes:
+  startup:
+    path: /actuator/health/readiness
+    periodSeconds: 5
+    failureThreshold: 30
+    timeoutSeconds: 2
+  readiness:
+    path: /actuator/health/readiness
+    periodSeconds: 10
+    failureThreshold: 3
+    timeoutSeconds: 2
+  liveness:
+    path: /actuator/health/liveness
+    periodSeconds: 20
+    failureThreshold: 3
+    timeoutSeconds: 2
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1024Mi
+
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+config:
+  SERVER_PORT: "8082"
+  # mock-pg 자기자신 호출. 운영에서는 외부 PG 로 교체 + MOCK_PG_ENABLED=false.
+  PG_URL: "http://localhost:8082/mock-pg/charge"
+  PG_CONNECT_TIMEOUT_MS: "1000"
+  PG_READ_TIMEOUT_MS: "5000"
+  MOCK_PG_ENABLED: "true"
+  MOCK_PG_FAILURE_RATE: "0.01"
+  MOCK_PG_TIMEOUT_RATE: "0.005"
+  MOCK_PG_LATENCY_MEAN_MS: "200"
+  MOCK_PG_LATENCY_STDDEV_MS: "50"
+
+secret:
+  create: true
+
+extraEnvFrom: []
+
+extraVolumes: []
+extraVolumeMounts: []
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: payment.example.com
+      paths:
+        - path: /api/v1/payments
+          pathType: Prefix
+        - path: /actuator/health
+          pathType: Prefix
+  tls: []
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+    scaleUp:
+      stabilizationWindowSeconds: 30
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podLabels: {}
+podAnnotations: {}
