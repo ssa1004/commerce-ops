@@ -1,0 +1,18 @@
+apiVersion: v2
+name: payment-service
+description: |
+  결제 서비스 — 외부 PG 호출 + mock-pg (외부 PG 흉내), afterCommit publish.
+  outbox / 분산락 같은 무거운 패턴은 order / inventory 가 담당하고, payment 는 PG 호출 책임.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - payment
+  - mock-pg
+  - spring-boot
+home: https://github.com/ssa1004/mini-shop-observability
+sources:
+  - https://github.com/ssa1004/mini-shop-observability/tree/main/services/payment-service
+maintainers:
+  - name: ssa1004
+    url: https://github.com/ssa1004
