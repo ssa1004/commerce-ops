@@ -1,0 +1,39 @@
+apiVersion: v2
+name: mini-shop
+description: |
+  mini-shop-observability 의 3개 마이크로서비스 (order / payment / inventory) 를 한 release
+  로 묶는 umbrella chart. starter 모듈 (slow-query-detector / jfr-recorder-starter /
+  correlation-mdc-starter) 은 다른 7 sister repo 가 dependency 로 가져다 쓰므로 chart 에
+  포함하지 않는다. 옵저버빌리티 stack (Prometheus / Grafana / Loki / Tempo) 도 외부 helm
+  chart (kube-prometheus-stack / loki-stack / tempo-distributed) 사용을 가정해 제외.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - microservices
+  - spring-boot
+  - observability
+  - opentelemetry
+  - umbrella
+home: https://github.com/ssa1004/mini-shop-observability
+sources:
+  - https://github.com/ssa1004/mini-shop-observability
+maintainers:
+  - name: ssa1004
+    url: https://github.com/ssa1004
+
+# sub-chart 들은 charts/ 하위에 packaged 되어 있으므로 file://. helm repo 에 push 하면
+# repository 를 https://... 로 바꾸면 된다.
+dependencies:
+  - name: order-service
+    version: 0.1.0
+    repository: file://charts/order-service
+    condition: order-service.enabled
+  - name: payment-service
+    version: 0.1.0
+    repository: file://charts/payment-service
+    condition: payment-service.enabled
+  - name: inventory-service
+    version: 0.1.0
+    repository: file://charts/inventory-service
+    condition: inventory-service.enabled

@@ -41,3 +41,7 @@ test-results/
 
 # Gradle wrapper artifacts (jar is committed; ignore others)
 .gradle-cache/
+
+# Helm — packaged sub-chart .tgz 와 Chart.lock 은 release 시 dep update 로 다시 생성.
+helm/**/charts/*.tgz
+helm/**/Chart.lock
