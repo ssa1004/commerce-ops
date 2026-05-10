@@ -1,12 +1,12 @@
 # Spring Boot Ops Toolkit
 
-레포 안에서 자체 개발하는 Spring Boot 운영 라이브러리 모음. 2개는 구현 완료 + services/* 에 적용되어 동작 중, 3개는 설계 단계 (README + DESIGN 만 — 정식 구현 전).
+레포 안에서 자체 개발하는 Spring Boot 운영 라이브러리 모음. 3개는 구현 완료 + services/* 에 적용되어 동작 중, 2개는 설계 단계 (README + DESIGN 만 — 정식 구현 전).
 
 | Module | 상태 | 한 줄 설명 |
 |---|---|---|
 | [slow-query-detector](slow-query-detector/) | ✅ v0.1 — order-service 적용 | JPA/JDBC 슬로우·N+1 쿼리 자동 감지 → 메트릭/로그 (ADR-012) |
-| [jfr-recorder-starter](jfr-recorder-starter/) | ✅ v0.1 — order-service 적용 | JFR always-on continuous profiling — rolling chunk + actuator dump + S3/MinIO 자동 업로드 (ADR-015 / ADR-018) |
-| [correlation-mdc-starter](correlation-mdc-starter/) | 📝 설계 (Phase 3 Step 6) | OTel Trace ID ↔ MDC 자동 동기화 — 비즈니스 attribute (X-User-Id 등) 까지 |
+| [jfr-recorder-starter](jfr-recorder-starter/) | ✅ v0.1 — order-service 적용 | JFR always-on continuous profiling — rolling chunk + actuator dump + S3/MinIO 자동 업로드 (ADR-015 / ADR-018 / ADR-024) |
+| [correlation-mdc-starter](correlation-mdc-starter/) | ✅ v0.1 (Servlet 한정) | OTel Span → SLF4J MDC 자동 동기화 (trace_id / span_id). WebFlux / Kafka / 비즈니스 attribute 는 후속 (ADR-025) |
 | [actuator-extras](actuator-extras/) | 📝 설계 (Phase 3 Step 4) | HikariCP / 스레드풀 / 트랜잭션 통계 커스텀 endpoint |
 | [chaos-injector](chaos-injector/) | 📝 설계 (Phase 3 Step 5) | 메서드 단위로 지연/실패 주입 (테스트·데모용) |
 

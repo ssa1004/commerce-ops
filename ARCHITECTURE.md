@@ -98,7 +98,7 @@ choreography (안무) 는 어느 한 서비스가 흐름을 지휘하지 않고,
 
 ## 설계 결정 (요약)
 
-자세한 배경은 [docs/decision-log.md](docs/decision-log.md)에 ADR로 기록 (현재 24개). 핵심:
+자세한 배경은 [docs/decision-log.md](docs/decision-log.md)에 ADR로 기록 (현재 25개). 핵심:
 
 - **Java 21 + Spring Boot 3.5** — Virtual Threads (운영체제 스레드보다 훨씬 가벼운 JVM 차원의 스레드 — 동시성 비용을 크게 낮춤) 등 신규 문법 활용
 - **서비스별 DB 분리** — 마이크로서비스 원칙 + 독립 진화 (한 서비스의 스키마 변경이 다른 서비스를 막지 않게)
