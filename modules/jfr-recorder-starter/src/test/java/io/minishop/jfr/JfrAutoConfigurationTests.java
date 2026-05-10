@@ -60,6 +60,7 @@ class JfrAutoConfigurationTests {
         baseRunner().withPropertyValues(
                         "mini-shop.jfr.rollover=1m",
                         "mini-shop.jfr.max-retained=12",
+                        "mini-shop.jfr.max-total-size=128MB",
                         "mini-shop.jfr.settings=profile",
                         "mini-shop.jfr.mask-sensitive-events=true"
                 )
@@ -67,6 +68,7 @@ class JfrAutoConfigurationTests {
                     JfrRecorderProperties props = ctx.getBean(JfrRecorderProperties.class);
                     assertThat(props.rollover().toMinutes()).isEqualTo(1);
                     assertThat(props.maxRetained()).isEqualTo(12);
+                    assertThat(props.maxTotalSize().toMegabytes()).isEqualTo(128);
                     assertThat(props.settings()).isEqualTo("profile");
                     assertThat(props.maskSensitiveEvents()).isTrue();
                 });

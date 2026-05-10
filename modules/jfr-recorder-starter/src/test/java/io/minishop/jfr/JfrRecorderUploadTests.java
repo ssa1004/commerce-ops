@@ -119,7 +119,7 @@ class JfrRecorderUploadTests {
 
     private JfrRecorder newRecorder(boolean uploadAdHocDumps) {
         JfrRecorderProperties props = new JfrRecorderProperties(
-                true, Duration.ofMinutes(1), 24, tempDir.toString(), "default", false);
+                true, Duration.ofMinutes(1), 24, null, tempDir.toString(), "default", false);
         return new JfrRecorder(props, meters, uploader, uploadAdHocDumps);
     }
 }
