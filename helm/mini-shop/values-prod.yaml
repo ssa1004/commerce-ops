@@ -1,0 +1,128 @@
+# 운영 (prod) override.
+# helm upgrade mini-shop helm/mini-shop \
+#   --namespace mini-shop \
+#   --values helm/mini-shop/values.yaml \
+#   --values helm/mini-shop/values-prod.yaml \
+#   --set global.image.tag=<release-sha>
+
+global:
+  image:
+    tag: ""              # CI 가 --set global.image.tag=<sha> 로 채움
+  postgres:
+    host: prod-postgres.mini-shop.internal
+    port: 5432
+    user: mini
+    password: REPLACE_WITH_EXTERNAL_SECRET
+  redis:
+    host: prod-redis.mini-shop.internal
+    port: 6379
+  kafka:
+    bootstrapServers: prod-msk.mini-shop.internal:9092
+  otel:
+    host: otel-collector.observability.svc.cluster.local
+    httpPort: 4318
+  deployEnv: prod
+
+  prometheusScrape:
+    enabled: true
+    port: "8080"
+    path: "/actuator/prometheus"
+
+  ingress:
+    enabled: true
+    className: nginx
+    host: mini-shop.example.com
+    annotations:
+      nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    tls:
+      - secretName: mini-shop-tls
+        hosts:
+          - mini-shop.example.com
+
+  networkPolicy:
+    enabled: true
+
+# ============================================================
+# order-service prod
+# ============================================================
+order-service:
+  replicaCount: 3
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+  config:
+    SAGA_MACHINE_ENFORCE: "false"
+    OUTBOX_POLLER_ENABLED: "true"
+    OUTBOX_POLLER_INTERVAL_MS: "1000"
+    OUTBOX_POLLER_BATCH_SIZE: "100"
+    RECONCILIATION_ENABLED: "true"
+    RECONCILIATION_INTERVAL_MS: "60000"
+    DB_POOL_MAX: "20"
+    DB_POOL_MIN_IDLE: "5"
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+
+# ============================================================
+# payment-service prod
+# ============================================================
+payment-service:
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 300m
+      memory: 768Mi
+    limits:
+      cpu: 1500m
+      memory: 1536Mi
+  config:
+    # 운영에선 외부 PG. mock-pg 비활성.
+    PG_URL: "https://pg.example.com/charge"
+    MOCK_PG_ENABLED: "false"
+    DB_POOL_MAX: "12"
+    DB_POOL_MIN_IDLE: "3"
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+# ============================================================
+# inventory-service prod
+# ============================================================
+inventory-service:
+  replicaCount: 3
+  resources:
+    requests:
+      cpu: 300m
+      memory: 768Mi
+    limits:
+      cpu: 1500m
+      memory: 1536Mi
+  config:
+    DB_POOL_MAX: "15"
+    DB_POOL_MIN_IDLE: "3"
+    INVENTORY_LOCK_WAIT_MS: "2000"
+    INVENTORY_LOCK_LEASE_MS: "10000"
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 12
+    targetCPUUtilizationPercentage: 70
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2

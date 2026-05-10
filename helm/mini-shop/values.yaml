@@ -1,0 +1,184 @@
+# mini-shop umbrella values (dev 기본).
+# 운영은 values-prod.yaml 로 override.
+#
+# 구조:
+#   global.*           — 3 sub-chart 에 공통으로 주입되는 값 (image registry, OTel, Postgres 등)
+#   order-service.*    — order sub-chart override
+#   payment-service.*  — payment sub-chart override
+#   inventory-service.*— inventory sub-chart override
+#
+# sub-chart 의 values 는 *서비스별로 의미가 있는 값* (포트, DB 스키마, 도메인 환경변수) 만 두고
+# 공통 인프라는 global 로 통합.
+
+global:
+  # 3 서비스 모두 같은 registry / tag 를 쓰는 게 일반적. sub-chart 의 image.repository 가
+  # 비어있을 때만 global 이 fallback 으로 사용된다. tag 도 동일.
+  image:
+    registry: ghcr.io/ssa1004
+    pullPolicy: IfNotPresent
+    tag: ""              # 비우면 sub-chart 의 .Chart.AppVersion 사용
+  imagePullSecrets: []
+
+  # 외부 의존 (Postgres / Redis / Kafka) — chart 자체에 포함하지 않고 endpoint 만 주입.
+  # 운영은 RDS / ElastiCache / MSK 의 endpoint 를 넣는다.
+  postgres:
+    host: mini-shop-postgres
+    port: 5432
+    user: mini
+    # 운영은 ExternalSecret 으로 대체 (extraEnvFrom 참조).
+    password: mini
+  redis:
+    host: mini-shop-redis
+    port: 6379
+  kafka:
+    bootstrapServers: mini-shop-kafka:9092
+
+  # OpenTelemetry collector — infra/otel-collector 와 동일한 endpoint 명명. 자체 배포한
+  # collector (DaemonSet 또는 Deployment) 의 ClusterIP service.
+  otel:
+    host: mini-shop-otel-collector
+    httpPort: 4318
+  deployEnv: dev
+
+  # 모든 service Pod 공통 securityContext.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+
+  # Spring graceful shutdown (25s) + endpoint 제거 전파 buffer (10s) + 여유.
+  terminationGracePeriodSeconds: 60
+  preStopSleepSeconds: 10
+
+  # Prometheus scrape annotation — 자체 배포한 prometheus (또는 ServiceMonitor 사용 시 무시).
+  prometheusScrape:
+    enabled: true
+    port: "8080"
+    path: "/actuator/prometheus"
+
+  ingress:
+    enabled: false
+    className: ""
+    host: mini-shop.example.com
+    annotations: {}
+    tls: []
+
+  # NetworkPolicy 는 운영에서만 켜기.
+  networkPolicy:
+    enabled: false
+
+# ============================================================
+# order-service
+# ============================================================
+order-service:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ""        # 비우면 global.image.registry + "/order-service"
+    tag: ""
+  service:
+    port: 80
+    targetPort: 8081
+  resources:
+    requests:
+      cpu: 200m
+      memory: 768Mi
+    limits:
+      cpu: 1000m
+      memory: 1536Mi
+  config:
+    SERVER_PORT: "8081"
+    # 같은 chart release 안의 다른 sub-chart 를 ClusterIP service 이름으로 호출.
+    # release name 이 mini-shop 이라면 service 이름은 mini-shop-payment / mini-shop-inventory.
+    # _helpers.tpl 의 .otherService 헬퍼가 release name 을 prefix 로 붙여준다.
+    PAYMENT_URL: ""       # template 안에서 helper 로 채움
+    INVENTORY_URL: ""     # template 안에서 helper 로 채움
+    OUTBOX_POLLER_ENABLED: "true"
+    RECONCILIATION_ENABLED: "true"
+    SAGA_MACHINE_ENFORCE: "false"
+  # JFR continuous profiling 은 readOnlyRootFs 와 충돌 — emptyDir 로 mount.
+  jfr:
+    enabled: true
+    dumpDir: /var/jfr
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  podDisruptionBudget:
+    enabled: false
+    minAvailable: 1
+
+# ============================================================
+# payment-service
+# ============================================================
+payment-service:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ""
+    tag: ""
+  service:
+    port: 80
+    targetPort: 8082
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1024Mi
+  config:
+    SERVER_PORT: "8082"
+    # 자기 자신을 호출 (mock-pg). 운영에선 외부 PG endpoint 로 교체.
+    PG_URL: "http://localhost:8082/mock-pg/charge"
+    MOCK_PG_ENABLED: "true"
+    MOCK_PG_FAILURE_RATE: "0.01"
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  podDisruptionBudget:
+    enabled: false
+    minAvailable: 1
+
+# ============================================================
+# inventory-service
+# ============================================================
+inventory-service:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ""
+    tag: ""
+  service:
+    port: 80
+    targetPort: 8083
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1024Mi
+  config:
+    SERVER_PORT: "8083"
+    INVENTORY_LOCK_WAIT_MS: "2000"
+    INVENTORY_LOCK_LEASE_MS: "10000"
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  podDisruptionBudget:
+    enabled: false
+    minAvailable: 1
