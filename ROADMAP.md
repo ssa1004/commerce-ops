@@ -153,13 +153,14 @@
 - [x] `app.saga.machine.enforce=true` 토글 — mismatch 시 즉시 예외 (CI/staging 검증용)
 - [x] 9개 단위 테스트 (8 시나리오 + terminal 보호) + 5개 coordinator 테스트 (shadow / enforce / unhandled / consistency)
 
-> 아래 Step 7~9 는 placeholder 모듈 — `modules/<name>/` 에 README 만 있고 `src/` 가 없는 상태. 정식 구현 시 v0.1 publish + composite build 등록까지 한 단위.
+> 아래 Step 8~9 는 placeholder 모듈 — `modules/<name>/` 에 README 만 있고 `src/` 가 없는 상태. 정식 구현 시 v0.1 publish + composite build 등록까지 한 단위.
 
-### Step 7 — correlation-mdc-starter (placeholder)
-- [ ] OTel trace_id 가 이미 MDC (Mapped Diagnostic Context — SLF4J/Logback 의 thread-local 키밸류 저장소, 로그 패턴에서 `%X{key}` 로 출력 가능) 에 들어가는 부분은 그대로 활용
-- [ ] 추가: HTTP 헤더(X-User-Id, X-Request-Id 등)에서 비즈니스 식별자를 MDC 로 주입 — ADR-013 의 PII 마스킹 정책을 starter 에서 자동 적용
-- [ ] Kafka consumer 에서도 동일하게 (현재 trace 컨텍스트 외에 추가 attribute)
+### Step 7 — correlation-mdc-starter ✅ v0.1 (Servlet 한정)
+- [x] Servlet `OncePerRequestFilter` — 활성 Span 의 trace_id / span_id 를 MDC 에 set, 종료 시 정리 (ADR-025)
+- [ ] WebFlux 분기 — `WebFilter` + Reactor Context 전파
+- [ ] Kafka consumer `RecordInterceptor` — 헤더의 traceparent → MDC
 - [ ] 비동기 Executor 데코레이터 (Reactor / `@Async`) — 다른 스레드로 작업이 넘어갈 때도 MDC 가 따라가도록
+- [ ] 비즈니스 attribute (X-User-Id, X-Request-Id 등) 의 마스킹 정책 통합 (ADR-013)
 
 ### Step 8 — actuator-extras (placeholder)
 - [ ] `/actuator/hikari` (DB 커넥션 풀의 active/idle/pending + 최근 느렸던 acquire 기록)
