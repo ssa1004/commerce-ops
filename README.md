@@ -22,6 +22,95 @@
 
 ---
 
+## Portfolio Set 통합
+
+본 레포는 8 개 학습 레포 중 한 자리입니다. 다른 7 개는 각자 도메인 (인증, 보안 로그, 알림, 검색, 결제, 리셀 거래소, GPU 잡) 을 담고, 본 레포는 그 위에 깔리는 *운영 라이브러리 (starter)* 와 *옵저버빌리티 스택* 을 제공합니다. starter 만 가져다 쓰면 어느 레포든 자동으로 slow query / JFR / correlation MDC 가 켜집니다.
+
+| Repo | 도메인 | 본 레포와의 관계 |
+|---|---|---|
+| [auth-service](https://github.com/ssa1004/auth-service) | OAuth2 / OIDC IdP, JWT 발행 + JWK rotation | starter consumer. 본 레포 통합 데모에서 JWK Set stub 으로 mock |
+| [security-log-search](https://github.com/ssa1004/security-log-search) | SIEM 로그 수집/정규화/검색 (Kafka + OpenSearch + ClickHouse + Flink) | starter consumer |
+| [notification-hub](https://github.com/ssa1004/notification-hub) | 다채널 알림 fan-out (push/email/SMS/카카오) | starter consumer |
+| [search-service](https://github.com/ssa1004/search-service) | 상품 검색 (ES + CDC + alias swap) | starter consumer |
+| [billing-platform](https://github.com/ssa1004/billing-platform) | B2B 결제/청구/정산 (실시간 + 사용량 기반) | starter consumer |
+| [resell-orderbook](https://github.com/ssa1004/resell-orderbook) | 한정판 리셀 거래소 (ASK/BID 매칭) | starter consumer |
+| [gpu-job-orchestrator](https://github.com/ssa1004/gpu-job-orchestrator) | GPU 학습/추론 잡 오케스트레이션 (K8s Job + 콜백) | starter consumer |
+| **mini-shop-observability** (본 레포) | 미니 이커머스 + 옵저버빌리티 + Spring Boot Ops Toolkit (starter 3 종) | starter provider |
+
+> 프로필 README: <https://github.com/ssa1004/ssa1004>
+
+### 다른 7 레포가 본 레포의 starter 를 어떻게 쓰나
+
+```mermaid
+flowchart LR
+  subgraph providers["mini-shop-observability (provider)"]
+    SQ["slow-query-detector\n(JPA/JDBC slow + N+1 자동 감지)"]
+    JFR["jfr-recorder-starter\n(continuous JFR + actuator dump)"]
+    MDC["correlation-mdc-starter\n(OTel trace_id → SLF4J MDC)"]
+  end
+
+  subgraph consumers["7 sister repos (consumer)"]
+    AUTH[auth-service]
+    SEC[security-log-search]
+    NOTI[notification-hub]
+    SEARCH[search-service]
+    BILL[billing-platform]
+    RESELL[resell-orderbook]
+    GPU[gpu-job-orchestrator]
+  end
+
+  subgraph stack["옵저버빌리티 stack (provider 가 띄움)"]
+    PROM[Prometheus]
+    LOKI[Loki]
+    TEMPO[Tempo]
+    GRAF[Grafana]
+  end
+
+  SQ -.implementation 의존성.-> AUTH
+  SQ -.-> SEC
+  SQ -.-> NOTI
+  SQ -.-> SEARCH
+  SQ -.-> BILL
+  SQ -.-> RESELL
+  SQ -.-> GPU
+  JFR -.-> AUTH
+  JFR -.-> BILL
+  MDC -.-> AUTH
+  MDC -.-> SEC
+  MDC -.-> NOTI
+
+  consumers -- "메트릭 (slow_query_total, jfr.*)" --> PROM
+  consumers -- "로그 + trace_id MDC" --> LOKI
+  consumers -- "OTel trace" --> TEMPO
+  PROM --> GRAF
+  LOKI --> GRAF
+  TEMPO --> GRAF
+```
+
+### Starter 한 줄 설명 + 사용법
+
+| Starter | 한 줄 설명 | 다른 레포에서 쓰는 법 |
+|---|---|---|
+| `slow-query-detector` | JPA/JDBC slow query + N+1 패턴 자동 감지 → `slow_query_total` / `n_plus_one_total` 카운터 | `implementation("io.minishop:slow-query-detector:0.1.0")` |
+| `jfr-recorder-starter` | JFR continuous profiling 24/7 + `/actuator/jfr` ad-hoc dump + S3/MinIO 자동 업로드 | `implementation("io.minishop:jfr-recorder-starter:0.1.0")` |
+| `correlation-mdc-starter` | OTel `Span.current()` → SLF4J MDC `trace_id` / `span_id` 자동 동기화 | `implementation("io.minishop:correlation-mdc-starter:0.1.0")` |
+
+전부 Spring Boot AutoConfiguration — *의존성만 추가하면 자동 활성*. 끄고 싶으면 각 starter 의 `mini-shop.<name>.enabled=false`. 자세한 내부 동작은 [`modules/<name>/README.md`](modules/) 참조.
+
+### 통합 데모 한 번에 띄우기
+
+```bash
+docker compose \
+  -f infra/docker-compose.yml \
+  -f infra/docker-compose.integration.yml \
+  up -d
+./scripts/integration-demo.sh
+```
+
+`docker-compose.integration.yml` 은 기존 옵저버빌리티 stack 위에 *auth-service stub (JWK Set)* 만 추가합니다 — 7 sister repo 들이 JWT 검증을 통합 시연할 수 있도록. `integration-demo.sh` 는 mock JWT 으로 `POST /orders` → trace_id 로 Loki 로그 ↔ Tempo trace 점프 → slow query 일부러 발생 → JFR ad-hoc dump 까지 한 흐름으로 실행합니다.
+
+---
+
 ## System Overview
 
 ```
