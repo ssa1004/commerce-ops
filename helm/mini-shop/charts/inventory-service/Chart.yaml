@@ -1,0 +1,19 @@
+apiVersion: v2
+name: inventory-service
+description: |
+  재고 서비스 — Redisson 분산락 + (orderId, productId) 멱등성. order-service 의 SAGA
+  reserve / release 호출을 처리.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - inventory
+  - distributed-lock
+  - idempotency
+  - spring-boot
+home: https://github.com/ssa1004/mini-shop-observability
+sources:
+  - https://github.com/ssa1004/mini-shop-observability/tree/main/services/inventory-service
+maintainers:
+  - name: ssa1004
+    url: https://github.com/ssa1004
