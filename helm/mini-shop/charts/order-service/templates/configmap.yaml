@@ -1,0 +1,32 @@
+{{/*
+ConfigMap — 비밀이 아닌 환경변수.
+* PAYMENT_URL / INVENTORY_URL 은 helper 가 release-name fallback 처리.
+* DB / Redis / Kafka / OTel host 는 global 에서 가져와 Spring 표준 prop 명으로 주입.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "order-service.configMapName" . }}
+  labels:
+    {{- include "order-service.labels" . | nindent 4 }}
+data:
+  # 도메인 / 서비스 환경변수
+  {{- range $k, $v := .Values.config }}
+  {{- if and (ne $k "PAYMENT_URL") (ne $k "INVENTORY_URL") }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}
+  {{- end }}
+  PAYMENT_URL: {{ include "order-service.paymentUrl" . | quote }}
+  INVENTORY_URL: {{ include "order-service.inventoryUrl" . | quote }}
+
+  # 인프라 endpoint — global 주입
+  DB_HOST: {{ .Values.global.postgres.host | quote }}
+  DB_PORT: {{ .Values.global.postgres.port | quote }}
+  DB_USER: {{ .Values.global.postgres.user | quote }}
+  KAFKA_BOOTSTRAP_SERVERS: {{ .Values.global.kafka.bootstrapServers | quote }}
+  OTEL_HOST: {{ .Values.global.otel.host | quote }}
+  DEPLOY_ENV: {{ .Values.global.deployEnv | quote }}
+
+  # JFR
+  JFR_ENABLED: {{ .Values.jfr.enabled | quote }}
+  JFR_DUMP_DIR: {{ .Values.jfr.dumpDir | quote }}

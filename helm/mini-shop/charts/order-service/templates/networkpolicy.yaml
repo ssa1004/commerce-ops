@@ -1,0 +1,57 @@
+{{/*
+NetworkPolicy — 운영에서만 enable.
+* ingress: 같은 namespace 의 ingress controller 와 prometheus / grafana 등 옵저버빌리티
+  네임스페이스에서의 scrape 만 허용.
+* egress: DNS, postgres, redis, kafka, payment-service, inventory-service, otel-collector.
+*/}}
+{{- if .Values.global.networkPolicy.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "order-service.fullname" . }}
+  labels:
+    {{- include "order-service.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "order-service.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # 같은 namespace 의 다른 service (payment / inventory 가 callback 호출하는 경우 대비)
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.service.targetPort }}
+    # ingress controller (nginx)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: {{ .Values.service.targetPort }}
+    # prometheus scrape (observability ns)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+      ports:
+        - protocol: TCP
+          port: {{ .Values.service.targetPort }}
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # 같은 namespace 의 다른 서비스 (payment / inventory) + Kafka / Postgres / Redis 가 같은
+    # ns 라면 여기서 같이 허용. 외부 ns 는 추가 rule 필요.
+    - to:
+        - podSelector: {}
+{{- end }}

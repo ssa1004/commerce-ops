@@ -1,0 +1,163 @@
+# order-service sub-chart 단독 default. umbrella 에서 override.
+# 단독으로 배포할 일은 거의 없지만 (umbrella 가 정상 경로) 단독 install 도 가능하도록 유지.
+
+global:
+  image:
+    registry: ghcr.io/ssa1004
+    pullPolicy: IfNotPresent
+    tag: ""
+  imagePullSecrets: []
+  postgres:
+    host: mini-shop-postgres
+    port: 5432
+    user: mini
+    password: mini
+  redis:
+    host: mini-shop-redis
+    port: 6379
+  kafka:
+    bootstrapServers: mini-shop-kafka:9092
+  otel:
+    host: mini-shop-otel-collector
+    httpPort: 4318
+  deployEnv: dev
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+  terminationGracePeriodSeconds: 60
+  preStopSleepSeconds: 10
+  prometheusScrape:
+    enabled: true
+    port: "8080"
+    path: "/actuator/prometheus"
+  networkPolicy:
+    enabled: false
+
+enabled: true
+nameOverride: ""
+fullnameOverride: ""
+
+replicaCount: 2
+image:
+  repository: ""           # 비우면 global.image.registry + "/order-service"
+  tag: ""
+  pullPolicy: ""
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8081
+  annotations: {}
+
+# Spring Boot 기준 startup → readiness → liveness.
+probes:
+  startup:
+    path: /actuator/health/readiness
+    periodSeconds: 5
+    failureThreshold: 30          # 5 * 30 = 150s
+    timeoutSeconds: 2
+  readiness:
+    path: /actuator/health/readiness
+    periodSeconds: 10
+    failureThreshold: 3
+    timeoutSeconds: 2
+  liveness:
+    path: /actuator/health/liveness
+    periodSeconds: 20
+    failureThreshold: 3
+    timeoutSeconds: 2
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 768Mi
+  limits:
+    cpu: 1000m
+    memory: 1536Mi
+
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+# 서비스별 환경변수 (ConfigMap envFrom).
+# umbrella 가 PAYMENT_URL / INVENTORY_URL 을 비워두면 deployment template 에서 release-name
+# 기반으로 fallback (mini-shop-payment-service / mini-shop-inventory-service).
+config:
+  SERVER_PORT: "8081"
+  PAYMENT_URL: ""
+  INVENTORY_URL: ""
+  OUTBOX_POLLER_ENABLED: "true"
+  OUTBOX_POLLER_INTERVAL_MS: "1000"
+  OUTBOX_POLLER_BATCH_SIZE: "100"
+  RECONCILIATION_ENABLED: "true"
+  RECONCILIATION_INTERVAL_MS: "60000"
+  SAGA_MACHINE_ENFORCE: "false"
+  CLIENT_RETRY_ENABLED: "true"
+  CLIENT_RETRY_MAX_ATTEMPTS: "3"
+
+# DB / Redis / Kafka 자격증명 — 운영은 secret.create=false + extraEnvFrom 으로 외부 secret.
+secret:
+  create: true
+
+# 추가 envFrom — 외부 ExternalSecret / SealedSecret 결과 Secret 참조.
+extraEnvFrom: []
+
+# JFR continuous profiling — readOnlyRootFs 와 충돌하므로 emptyDir mount.
+jfr:
+  enabled: true
+  dumpDir: /var/jfr
+
+extraVolumes: []
+extraVolumeMounts: []
+
+# sub-chart 단독 install 용 ingress. umbrella 에서는 비활성 + umbrella 의 ingress 가 통합.
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: order.example.com
+      paths:
+        - path: /api/v1/orders
+          pathType: Prefix
+        - path: /actuator/health
+          pathType: Prefix
+  tls: []
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+    scaleUp:
+      stabilizationWindowSeconds: 30
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podLabels: {}
+podAnnotations: {}

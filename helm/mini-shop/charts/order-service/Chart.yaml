@@ -1,0 +1,19 @@
+apiVersion: v2
+name: order-service
+description: |
+  주문 서비스 — REST 동기 SAGA orchestration + Outbox 패턴. payment-service / inventory-service
+  를 호출하며, 한 흐름의 trace 안에서 서비스 4개 span 이 묶인다.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - order
+  - saga
+  - outbox
+  - spring-boot
+home: https://github.com/ssa1004/mini-shop-observability
+sources:
+  - https://github.com/ssa1004/mini-shop-observability/tree/main/services/order-service
+maintainers:
+  - name: ssa1004
+    url: https://github.com/ssa1004
