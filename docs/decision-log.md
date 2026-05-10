@@ -345,3 +345,24 @@
     2. retry 횟수 / 패턴 분석에서 특정 endpoint 만 retry 가 많으면 그 endpoint 가 transient 가 아닌 잘못된 input 일 신호 — 4xx 분류 점검.
     3. `Retry-After` 응답 헤더 존중 — 5xx 응답에 backend 가 명시한 wait 시간이 있다면 우리 backoff 계산을 override (RFC 7231).
     4. `decorrelated jitter` 로 격상 검토 — 매우 높은 동시성에서 equal jitter 보다 thundering herd 차단이 약간 더 좋음 (AWS 비교 그래프). 단 wait 분포 직관성이 떨어짐.
+
+## ADR-023 — Outbox poller 의 모든 실패 경로는 동일한 attempts 회계 (handleFailure) 를 거친다
+
+- **결정**:
+  - `OutboxPoller.processOne()` 의 *모든 실패 경로* (`ExecutionException`, `TimeoutException`, **`InterruptedException`**) 가 같은 `handleFailure(event, reason)` 를 거치도록 통일. `handleFailure` 가 `attempts + 1 >= maxAttempts` 시 `markFailed`, 아니면 `markAttemptFailed` 를 선택.
+  - `outbox.publish` 메트릭의 outcome 분류는 *호출 후 행 상태* (`event.getStatus() == FAILED`) 로 결정 — `failed` (종결) 와 `retry` (다음 폴 재시도) 의 분기를 호출자가 일관되게 표현.
+- **배경**:
+  - 이전 구현은 `InterruptedException` 경로가 `event.markAttemptFailed(...)` 만 직접 호출 — `markFailed` 로 가는 경로가 *영원히 없음*. 인터럽트가 반복되는 행 (예: 프로세스 종료가 진행 중인 상태에서 매 폴마다 SIGTERM 도달, 또는 ThreadPoolExecutor.stop 으로 워커 인터럽트) 이 maxAttempts 도달해도 PENDING 으로 남는다.
+  - `findNextPendingForUpdate` 는 `WHERE status = 'PENDING'` 으로 필터하므로, 종결되지 않은 행은 재시작 후에도 매 폴 주기마다 다시 잡혀 시도된다. 정상 트래픽이 회복되어도 같은 stuck row 가 계속 commit head 를 점유 → 다른 PENDING 행의 처리 지연.
+  - `TimeoutException` / `ExecutionException` 두 경로는 이미 `handleFailure` 를 쓰고 있었기에, 회귀를 막는 가장 작은 변경은 인터럽트 경로도 같은 함수로 합치는 것.
+- **대안**:
+  1. **인터럽트는 attempts 안 올린다** — 인터럽트가 *행 자체* 의 문제는 아니므로 회계에서 빼고 다음 폴에 재시도. 그러나 인터럽트가 반복되는 환경 (악성 신호, 풀 종료 루프) 에서 무한 retry 로 종결 못 함. 기존과 같은 회귀.
+  2. **인터럽트는 즉시 markFailed** — 단 한 번만 들어와도 종결. 정상적인 graceful shutdown 신호 한 번에도 행을 죽여버려 *복구 가능했던 행* 을 잃는다 (재시작 후 정상 처리 가능했을 행).
+  3. **조회 단에서 `attempts < maxAttempts` 필터 추가** — `findNextPendingForUpdate` 의 WHERE 에 attempts 조건. 행이 자동 제외되어 polling 이 멈추지만, 행 상태는 여전히 PENDING 으로 남아 운영 대시보드에서 "stuck row" 로 잘못 보인다 (실제는 영구 실패). 의도가 코드 외부 (쿼리) 에 숨고, 메트릭/알람의 outcome 도 여전히 `interrupted` 로만 찍혀 종결 신호가 없다.
+- **결과**:
+  - `interrupt_atMax_marksFailed` / `executionException_atMax_marksFailedAndCountsFailed` 등 회귀 테스트 5개 추가 (`OutboxPollerFailureTests`). 다음 회귀 (예: 새 예외 catch 추가하면서 `handleFailure` 우회) 가 즉시 빨간불로 잡힌다.
+  - **MDC outboxRunId** 의 임시 처방 표시도 그대로 — `correlation-mdc-starter` 의 정식 도입 (ADR-024) 시점에 MDC 키 정책을 단일화. 본 ADR 은 회계 로직만 다룬다.
+  - **다음 phase 신호**:
+    1. `outbox.publish{outcome=failed}` 가 비정상적으로 많아지면 backend 장애 vs 영구 직렬화 결함 (payload format 등) 의 구분이 필요. 현재는 lastError 컬럼으로만 사후 조사.
+    2. FAILED 행의 archival/replay 도구. 운영자가 `lastError` 를 보고 fix 한 뒤 status 를 PENDING 으로 되돌려 재시도하는 흐름.
+    3. `attempts` 가 maxAttempts 에 도달하기 전에도 backoff (exponential) 를 적용해 같은 행의 연속 retry 가 polling 주기를 잡아먹지 않게.
