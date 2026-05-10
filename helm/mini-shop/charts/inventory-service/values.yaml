@@ -1,0 +1,143 @@
+# inventory-service sub-chart 단독 default. umbrella 에서 override.
+
+global:
+  image:
+    registry: ghcr.io/ssa1004
+    pullPolicy: IfNotPresent
+    tag: ""
+  imagePullSecrets: []
+  postgres:
+    host: mini-shop-postgres
+    port: 5432
+    user: mini
+    password: mini
+  redis:
+    host: mini-shop-redis
+    port: 6379
+  kafka:
+    bootstrapServers: mini-shop-kafka:9092
+  otel:
+    host: mini-shop-otel-collector
+    httpPort: 4318
+  deployEnv: dev
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+  terminationGracePeriodSeconds: 60
+  preStopSleepSeconds: 10
+  prometheusScrape:
+    enabled: true
+    port: "8080"
+    path: "/actuator/prometheus"
+  networkPolicy:
+    enabled: false
+
+enabled: true
+nameOverride: ""
+fullnameOverride: ""
+
+replicaCount: 2
+image:
+  repository: ""
+  tag: ""
+  pullPolicy: ""
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8083
+  annotations: {}
+
+probes:
+  startup:
+    path: /actuator/health/readiness
+    periodSeconds: 5
+    failureThreshold: 30
+    timeoutSeconds: 2
+  readiness:
+    path: /actuator/health/readiness
+    periodSeconds: 10
+    failureThreshold: 3
+    timeoutSeconds: 2
+  liveness:
+    path: /actuator/health/liveness
+    periodSeconds: 20
+    failureThreshold: 3
+    timeoutSeconds: 2
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1024Mi
+
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+config:
+  SERVER_PORT: "8083"
+  INVENTORY_LOCK_KEY_PREFIX: "inv"
+  INVENTORY_LOCK_WAIT_MS: "2000"
+  INVENTORY_LOCK_LEASE_MS: "10000"
+
+secret:
+  create: true
+
+extraEnvFrom: []
+
+extraVolumes: []
+extraVolumeMounts: []
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: inventory.example.com
+      paths:
+        - path: /api/v1/inventory
+          pathType: Prefix
+        - path: /actuator/health
+          pathType: Prefix
+  tls: []
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+    scaleUp:
+      stabilizationWindowSeconds: 30
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podLabels: {}
+podAnnotations: {}
