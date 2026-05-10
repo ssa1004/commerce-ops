@@ -105,24 +105,36 @@ public class OutboxPoller {
             event.markSent();
             meterRegistry.counter("outbox.publish", Tags.of("topic", event.getTopic(), "outcome", "sent")).increment();
         } catch (InterruptedException ie) {
+            // 인터럽트도 다른 실패와 같은 attempt 회계 (handleFailure) 를 거쳐야 한다.
+            // 직접 markAttemptFailed 만 호출하면 인터럽트가 반복되는 행 (예: 프로세스 종료가
+            // 진행 중인 상태에서 매 폴마다 인터럽트가 도달) 이 maxAttempts 에 도달해도
+            // 영구히 PENDING 으로 남는다 → 재시작 후에도 같은 행이 다시 시도되어 정체.
             Thread.currentThread().interrupt();
-            event.markAttemptFailed(ie.getMessage());
+            handleFailure(event, "interrupted: " + ie.getMessage());
             meterRegistry.counter("outbox.publish", Tags.of("topic", event.getTopic(), "outcome", "interrupted")).increment();
         } catch (TimeoutException te) {
             log.warn("Kafka send timed out after {}ms for outbox id={} topic={}",
                     sendTimeoutMs, event.getId(), event.getTopic());
             handleFailure(event, "send timeout after " + sendTimeoutMs + "ms");
-            meterRegistry.counter("outbox.publish", Tags.of("topic", event.getTopic(), "outcome", "timeout")).increment();
+            String outcome = event.getStatus() == OutboxStatus.FAILED ? "failed" : "timeout";
+            meterRegistry.counter("outbox.publish", Tags.of("topic", event.getTopic(), "outcome", outcome)).increment();
         } catch (ExecutionException e) {
             String reason = e.getCause() == null ? e.getMessage() : e.getCause().getMessage();
             log.warn("Kafka send failed for outbox id={} topic={}: {}", event.getId(), event.getTopic(), reason);
             handleFailure(event, reason);
-            String outcome = event.getAttempts() >= props.poller().maxAttempts() ? "failed" : "retry";
+            String outcome = event.getStatus() == OutboxStatus.FAILED ? "failed" : "retry";
             meterRegistry.counter("outbox.publish", Tags.of("topic", event.getTopic(), "outcome", outcome)).increment();
         }
         return true;
     }
 
+    /**
+     * 실패 처리 — attempts 가 maxAttempts 도달 직전이면 markFailed 로 종결, 아니면 markAttemptFailed.
+     *
+     * <p>{@code markFailed} / {@code markAttemptFailed} 는 둘 다 attempts 를 +1 하므로 *둘 중 하나만*
+     * 호출해야 한다. 호출 후 {@code event.getStatus()} 로 결과를 분기하면 호출자가 메트릭 outcome
+     * (retry vs failed) 을 일관되게 정할 수 있다.
+     */
     private void handleFailure(OutboxEvent event, String reason) {
         if (event.getAttempts() + 1 >= props.poller().maxAttempts()) {
             event.markFailed(reason);
