@@ -1,0 +1,12 @@
+{
+  "keys": [
+    {
+      "kty": "RSA",
+      "kid": "minishop-demo-2026-05",
+      "use": "sig",
+      "alg": "RS256",
+      "n": "q9N6zJ6HvMSI06UlgYD1k8sk8_jNvHj0n2YDBKfk2n8KOVtvZU5hwqPkivvrNawPuNPuYUKYvO9VQqmdSVMA8g6hkx0t4P0xud247jPLp6jAPiPMlGSgOe0dYAVf_wXgnzeaAAhSR1UmCKoQ-5_dhm82PmGS5U4Uh9UtwxfgbyRe8b-H5waldppJLFOQnNRYsF7AxY2CPDgW0_xO5xiLrFaxPhzSdICw2IJ1X6v-y2CKoFFnA92oX8MJRJR5mGxP07bzDvTyIZB7P3EJFPN4NxljZP-rxx7roc_5RDjYF2TjopMtBbiw5wANmTyGZBdlT8XIWZ8z5NgLatxRNyRP2w",
+      "e": "AQAB"
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+# 통합 데모 override — 기본 docker-compose.yml 위에 *덧붙여* 사용.
+#
+#   docker compose \
+#     -f infra/docker-compose.yml \
+#     -f infra/docker-compose.integration.yml \
+#     up -d
+#
+# 효과:
+#   1) auth-stub 추가 — 정적 JWK Set + OIDC discovery 노출 (sister repo 의 JWT 검증 시연 자리)
+#   2) Jaeger 추가 — Tempo 와 별도로 trace 를 볼 수 있는 보조 UI (OTel Collector 가 둘 다로 export)
+#   3) 기존 otel-collector 는 그대로 유지하되 Jaeger 까지 export 하는 config 로 교체
+#
+# 검증 / 데모 flow 는 scripts/integration-demo.sh 참조.
+# 본 override 는 8 레포 portfolio set 의 통합 시연용 — 운영 배포가 아니다.
+
+name: mini-shop-observability
+
+services:
+  # auth-service stub — 정적 JWK Set 만 노출. 진짜 auth-service 를 띄우는 비용 (DB / Redis /
+  # Flyway 마이그레이션) 을 피하면서, sister repo 들이 jwk-set-uri 만 이 stub 으로 가리켜
+  # JWT 검증을 통합 시연할 수 있게 한다. 자세한 의도는 infra/auth-stub/README.md.
+  auth-stub:
+    image: nginx:1.27-alpine
+    container_name: minishop-auth-stub
+    volumes:
+      - ./auth-stub/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./auth-stub/jwks.json:/usr/share/nginx/auth-stub/jwks.json:ro
+      - ./auth-stub/openid-configuration.json:/usr/share/nginx/auth-stub/openid-configuration.json:ro
+    ports:
+      - "9000:9000"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:9000/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # Jaeger (all-in-one) — Tempo 와 동일 trace 를 별도 UI 로도 보기 위한 보조.
+  # OTel Collector 의 traces pipeline 이 tempo 외에 jaeger 로도 export. 운영에선 둘 중 하나만
+  # 두는 것이 일반적 — 데모는 *trace backend 선택지* 자체를 보여주는 의미.
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    container_name: minishop-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "14250:14250"   # gRPC (collector 가 trace push)
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:14269/ || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # 기존 otel-collector 의 config 를 *통합 데모용* 으로 교체 — Tempo + Jaeger 양쪽 export.
+  # 다른 변경 (receiver / processor) 은 없음. 평소 (단일 backend) 운영은 base compose 만.
+  otel-collector:
+    volumes:
+      - ./otel-collector/config.integration.yaml:/etc/otel/config.yaml:ro
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+      - jaeger
