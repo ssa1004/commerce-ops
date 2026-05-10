@@ -1,0 +1,106 @@
+# 통합 데모용 collector config — 기본 config.yaml 과 거의 동일하되 traces 파이프라인이
+# Tempo + Jaeger 둘 다로 export. 그 외 receiver / processor / 다른 신호 (metrics / logs)
+# 는 변경 없음. 평소 (단일 backend) 운영은 base config.yaml 만.
+#
+# Tempo + Jaeger 양쪽 fan-out 의 의도:
+#   - Tempo 는 Grafana 통합 + S3 호환 스토리지 (운영) — 기본
+#   - Jaeger 는 *trace 의 다른 시각화* (timeline / dependency graph / service map) 를 보기 위한 보조
+#   - 통합 데모에서 sister repo 의 trace 가 양쪽에 동시에 떠 있는 그림으로 "OTel 표준이라 어느
+#     backend 든 같은 코드로 보낸다" 를 직접 보여준다.
+#
+# 운영 환경엔 둘 중 하나만 둔다 — fan-out 의 export 비용이 ~2배가 되고, retention 정책도
+# 따로 운영해야 한다. tail_sampling 의사결정은 양쪽에 동일하게 적용 (sampling → fan-out 순서).
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 75
+    spike_limit_percentage: 25
+
+  tail_sampling:
+    decision_wait: 10s
+    num_traces: 50000
+    expected_new_traces_per_sec: 200
+    policies:
+      - name: errors
+        type: status_code
+        status_code:
+          status_codes: [ERROR]
+      - name: http-5xx
+        type: numeric_attribute
+        numeric_attribute:
+          key: http.response.status_code
+          min_value: 500
+          max_value: 599
+      - name: slow
+        type: latency
+        latency:
+          threshold_ms: 500
+      - name: baseline-1pct
+        type: probabilistic
+        probabilistic:
+          sampling_percentage: 1
+
+  batch:
+    send_batch_size: 1024
+    timeout: 5s
+
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: dev
+        action: upsert
+
+exporters:
+  otlphttp/prometheus:
+    endpoint: http://prometheus:9090/api/v1/otlp
+    tls:
+      insecure: true
+
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  # Jaeger — collector-otlp 가 활성화된 all-in-one 이미지의 OTLP gRPC 진입점 (기본 4317).
+  # 같은 OTLP 포트라 별칭 충돌 회피를 위해 hostname 으로 구분 (jaeger:4317 vs tempo:4317).
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
+
+  debug:
+    verbosity: basic
+
+service:
+  telemetry:
+    metrics:
+      level: detailed
+      address: 0.0.0.0:8888
+
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, tail_sampling, resource, batch]
+      exporters: [otlp/tempo, otlp/jaeger]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlphttp/prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlphttp/loki]
