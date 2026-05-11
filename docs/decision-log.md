@@ -403,17 +403,9 @@
 - **배경**:
   - OTel Spring Boot starter 가 Span 자체는 만들어 주지만, 로그에 trace_id 를 같이 찍는 건 여전히 사용자 책임. Logback 패턴이 `%X{trace_id:-}` 를 참조하면 비어 있다 (default 값 fallback).
   - 같은 사고 회고에서 Loki ↔ Tempo 점프가 깨짐. 매 서비스에서 같은 boilerplate 필터를 복붙하는 것보다 starter 로 한 번에 배포하는 편이 운영 일관.
-  - placeholder 가 9개월간 비어 있던 모듈 — Round 2 polish 에서 *전체 placeholder 면제* 가 아니라 *구체 동작이 있는 v0.1* 로 격상해 README 가 거짓이 되지 않게.
+  - 모듈 디렉토리가 README 만 있고 `src/` 가 없으면 "의존성 추가 시 자동 활성" 이라는 starter 의 공약이 거짓이 됨. placeholder 5 개를 한 번에 비우려고 표면적을 넓히기보다, 가장 단순한 단위 (Servlet 한정) 부터 *동작하는 v0.1* 을 1 개씩 격상.
 - **대안**:
   1. **OTel agent 의 logback MDC instrumentation 그대로 사용** — 의존성만 추가하면 동작 (이미 services/* 가 OTel agent 를 쓰면 되는 자리). 그러나 본 레포는 agent 가 아닌 Spring Boot starter 를 쓰는 (ADR-007) 구조라 동등한 자동설정이 없음. agent 도입은 ADR-007 의 trade-off (단순성) 와 충돌.
   2. **Logback 의 `MDCInsertingServletFilter` 같은 외부 필터** — Spring Boot 가 자동등록해주지 않고, 매 서비스에서 명시 등록 필요. starter 의 핵심 가치 (의존성 추가만으로 자동) 를 깬다.
   3. **WebFilter 까지 한 번에** — WebFlux 분기는 Reactor Context 전파가 별도 (`ContextRegistry` + `Hooks.enableAutomaticContextPropagation()` 시점 결정 등) 라 *최소 동작* 의 검증 영역이 너무 넓어진다. v0.1 은 가장 단순한 Servlet 한정으로 시작 — placeholder 면제의 목표는 *동작하는 코드가 0 → 1* 이지 완전한 기능 매트릭스가 아님.
-- **결과**:
-  - 모듈 개수 표시 갱신 (`modules/README.md`, 루트 README) — 2/5 → 3/5.
-  - CI 매트릭스 (ADR-021 의 services/modules matrix) 에 `correlation-mdc-starter` 추가 — 빌드 회귀가 즉시 빨간불.
-  - 회귀 테스트 — 활성 Span 시 MDC 채워짐, 비활성 시 NPE 없음, finally 정리 (예외 경로 포함), 외부에서 미리 넣어둔 MDC 키 보존, 커스텀 키 적용. `CorrelationMdcAutoConfigurationTests` 의 자동설정 조건 (web vs non-web, enabled toggle) 도 별도 격리.
-  - **다음 phase 신호**:
-    1. WebFlux 도입 — `WebFilter` + Reactor Context 전파 + `@ConditionalOnWebApplication(REACTIVE)` 분기. Spring 6.2 의 `Hooks.enableAutomaticContextPropagation` 도 시점 결정 영역.
-    2. Kafka consumer `RecordInterceptor` — 헤더의 traceparent (W3C trace context) → MDC. 비동기 처리에서 trace_id 의 transit 보장.
-    3. 비즈니스 attribute (X-User-Id 등) — ADR-013 의 PII 마스킹 정책을 starter 단에서 자동 적용. mask 규칙은 properties 로 노출.
-    4. order-service 의 `OutboxPoller` 의 `MDC.put("outboxRunId", ...)` 같은 임시 처방을 본 starter 의 통일 키 정책으로 이전.
+- **결과**: Servlet 환경의 Loki ↔ Tempo 점프가 의존성 추가만으로 동작. CI 매트릭스 (`.github/workflows/ci.yml`) 에 `correlation-mdc-starter` 추가 — 빌드 회귀가 즉시 빨간불. 후속 작업: WebFlux (`WebFilter` + Reactor Context 전파), Kafka consumer `RecordInterceptor` (헤더의 traceparent → MDC), 비즈니스 attribute (X-User-Id 등 + ADR-013 의 PII 마스킹 통합), order-service `OutboxPoller` 의 `MDC.put("outboxRunId", ...)` 임시 처방을 본 starter 로 흡수.
