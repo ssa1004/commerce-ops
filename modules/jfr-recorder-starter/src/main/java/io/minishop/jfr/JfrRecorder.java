@@ -47,7 +47,7 @@ import java.util.stream.Stream;
  * event filter, 메트릭 노출 등 운영 패턴을 모듈로 묶어 각 서비스에서 의존성만 추가하면 동작하게
  * — slow-query-detector 와 같은 철학.
  */
-public class JfrRecorder {
+public final class JfrRecorder {
 
     private static final Logger log = LoggerFactory.getLogger(JfrRecorder.class);
 
@@ -177,7 +177,12 @@ public class JfrRecorder {
         Recording r = current.getAndSet(null);
         if (r != null) {
             try {
-                r.stop();
+                // graceful shutdown 도중 rollover 가 prev.close 직전에 끼어들었거나 이미 종결된
+                // 케이스는 정상. RecordingState.STOPPED / CLOSED 는 흡수, 나머지 상태에서의 실패만 WARN.
+                if (r.getState() != jdk.jfr.RecordingState.STOPPED
+                        && r.getState() != jdk.jfr.RecordingState.CLOSED) {
+                    r.stop();
+                }
                 r.close();
             } catch (Exception e) {
                 log.warn("JFR stop failed: {}", e.getMessage());
