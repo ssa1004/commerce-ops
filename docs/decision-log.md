@@ -361,7 +361,7 @@
   3. **조회 단에서 `attempts < maxAttempts` 필터 추가** — `findNextPendingForUpdate` 의 WHERE 에 attempts 조건. 행이 자동 제외되어 polling 이 멈추지만, 행 상태는 여전히 PENDING 으로 남아 운영 대시보드에서 "stuck row" 로 잘못 보인다 (실제는 영구 실패). 의도가 코드 외부 (쿼리) 에 숨고, 메트릭/알람의 outcome 도 여전히 `interrupted` 로만 찍혀 종결 신호가 없다.
 - **결과**:
   - `interrupt_atMax_marksFailed` / `executionException_atMax_marksFailedAndCountsFailed` 등 회귀 테스트 5개 추가 (`OutboxPollerFailureTests`). 다음 회귀 (예: 새 예외 catch 추가하면서 `handleFailure` 우회) 가 즉시 빨간불로 잡힌다.
-  - **MDC outboxRunId** 의 임시 처방 표시도 그대로 — `correlation-mdc-starter` 의 정식 도입 (ADR-024) 시점에 MDC 키 정책을 단일화. 본 ADR 은 회계 로직만 다룬다.
+  - **MDC outboxRunId** 의 임시 처방 표시도 그대로 — `correlation-mdc-starter` 의 정식 도입 (ADR-025) 시점에 MDC 키 정책을 단일화. 본 ADR 은 회계 로직만 다룬다.
   - **다음 phase 신호**:
     1. `outbox.publish{outcome=failed}` 가 비정상적으로 많아지면 backend 장애 vs 영구 직렬화 결함 (payload format 등) 의 구분이 필요. 현재는 lastError 컬럼으로만 사후 조사.
     2. FAILED 행의 archival/replay 도구. 운영자가 `lastError` 를 보고 fix 한 뒤 status 를 PENDING 으로 되돌려 재시도하는 흐름.

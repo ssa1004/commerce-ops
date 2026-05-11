@@ -37,8 +37,9 @@ import java.util.concurrent.TimeoutException;
  * {@code .get(sendTimeoutMs)} 로 상한을 걸어 행 락이 무기한 잡히지 않게 한다.
  *
  * <p><b>MDC outboxRunId</b> — 한 번의 {@code poll()} 호출에서 처리된 모든 행 로그를 같은 키로 묶기 위한
- * 백그라운드용 식별자. 요청 thread 의 traceId 와는 별개. {@code correlation-mdc-starter} 가 정식 도입되기
- * 전까지의 임시 처방.
+ * 백그라운드용 식별자. 요청 thread 의 traceId 와는 별개. {@code correlation-mdc-starter} v0.1 (ADR-025) 은
+ * Servlet 한정이라 백그라운드 폴러는 아직 그 범위 밖 — 비동기 Executor 데코레이터 단계 (ROADMAP Phase 3
+ * Step 7 잔여) 가 들어오면 MDC 키 정책을 그쪽으로 단일화한다.
  */
 @Component
 @ConditionalOnProperty(prefix = "mini-shop.outbox.poller", name = "enabled", havingValue = "true", matchIfMissing = true)
