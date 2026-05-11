@@ -18,7 +18,7 @@ repositories {
 	mavenCentral()
 }
 
-extra["testcontainersVersion"] = "1.20.4"
+extra["testcontainersVersion"] = "1.20.6"
 extra["otelInstrumentationVersion"] = "2.10.0"
 
 dependencies {

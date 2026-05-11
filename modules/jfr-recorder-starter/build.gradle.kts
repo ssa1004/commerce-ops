@@ -40,7 +40,7 @@ dependencies {
 	// 앱이 의존성을 안 들고 있으면 (= 업로드 비활성 환경) 자동설정이 클래스 부재 조건으로
 	// 평가되어 NoopJfrChunkUploader 가 선택된다. SDK 자체가 무거우므로 (~수십 MB) 명시적
 	// opt-in 으로 둔다.
-	compileOnly("software.amazon.awssdk:s3:2.25.30")
+	compileOnly("software.amazon.awssdk:s3:2.25.70")
 
 	// JFR (jdk.jfr.*) 은 JDK 11+ 부터 표준 모듈에 포함 — 별도 의존성 불필요. Java 21 toolchain
 	// 을 강제하므로 컴파일/런타임 모두 안전.
@@ -53,7 +53,7 @@ dependencies {
 	// 비동기 업로드 검증 — JfrRecorderUploadTests 에서 jfr-uploader 스레드의 결과를 polling.
 	testImplementation("org.awaitility:awaitility")
 	// 단위 테스트에서 S3 fake / 실제 SDK 객체 검증 위해 runtime 에 끼움.
-	testImplementation("software.amazon.awssdk:s3:2.25.30")
+	testImplementation("software.amazon.awssdk:s3:2.25.70")
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

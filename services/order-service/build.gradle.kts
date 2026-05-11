@@ -18,7 +18,7 @@ repositories {
 	mavenCentral()
 }
 
-extra["testcontainersVersion"] = "1.20.4"
+extra["testcontainersVersion"] = "1.20.6"
 extra["otelInstrumentationVersion"] = "2.10.0"
 
 dependencies {
@@ -46,7 +46,7 @@ dependencies {
 	// 로부터 영감, latency 측정 기반으로 동시 진행 중 요청 수를 자동 조절). 외부 호출에서
 	// cascade (한 곳의 지연이 호출자 → 호출자 → ... 로 번져가는 도미노) 를 차단.
 	// Resilience4j 의 Bulkhead 는 *고정* — 적응형이 아님. 그래서 별도 라이브러리.
-	implementation("com.netflix.concurrency-limits:concurrency-limits-core:0.5.3")
+	implementation("com.netflix.concurrency-limits:concurrency-limits-core:0.5.4")
 
 	// Spring StateMachine — OrderSAGA 의 *상태 + 트리거 + 가드 + 액션* 을 명시 모델로 표현.
 	// 기존의 동기 if/else SAGA 와 *병행* 동작 (initial step) 시키며 결정 일관성을 검증한다.
