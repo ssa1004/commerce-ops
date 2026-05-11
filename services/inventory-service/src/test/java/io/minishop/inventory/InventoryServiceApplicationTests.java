@@ -54,13 +54,13 @@ class InventoryServiceApplicationTests {
 		Long productId = 1001L;
 		Long orderId = 9001L;
 
-		// initial stock from V2__seed_inventory.sql is 100
+		// 초기 재고는 V2__seed_inventory.sql 의 시드 — productId=1001 은 100 으로 시작.
 		ResponseEntity<InventoryResponse> initial = http.getForEntity(
 				"/inventories/{productId}", InventoryResponse.class, productId);
 		assertThat(initial.getStatusCode()).isEqualTo(HttpStatus.OK);
 		int before = initial.getBody().availableQuantity();
 
-		// 1st reserve — CREATED
+		// 첫 reserve — 새 reservation 이라 201 CREATED.
 		ResponseEntity<ReservationResponse> r1 = http.postForEntity(
 				"/inventories/reserve",
 				new ReserveRequest(productId, orderId, 5),
@@ -69,7 +69,7 @@ class InventoryServiceApplicationTests {
 		assertThat(r1.getStatusCode()).isEqualTo(HttpStatus.CREATED);
 		assertThat(r1.getBody().idempotent()).isFalse();
 
-		// 2nd reserve, same key — idempotent OK, NOT a second decrement
+		// 같은 키로 두 번째 reserve — 멱등 200 OK, 재고는 추가 차감되지 않아야.
 		ResponseEntity<ReservationResponse> r2 = http.postForEntity(
 				"/inventories/reserve",
 				new ReserveRequest(productId, orderId, 5),
@@ -79,12 +79,12 @@ class InventoryServiceApplicationTests {
 		assertThat(r2.getBody().idempotent()).isTrue();
 		assertThat(r2.getBody().id()).isEqualTo(r1.getBody().id());
 
-		// stock decreased by exactly 5
+		// 재고는 정확히 5 만 차감되어야.
 		ResponseEntity<InventoryResponse> midway = http.getForEntity(
 				"/inventories/{productId}", InventoryResponse.class, productId);
 		assertThat(midway.getBody().availableQuantity()).isEqualTo(before - 5);
 
-		// release once — restores stock
+		// 첫 release — 재고 복구.
 		ResponseEntity<ReservationResponse> rel1 = http.postForEntity(
 				"/inventories/release",
 				new ReleaseRequest(productId, orderId),
@@ -93,7 +93,7 @@ class InventoryServiceApplicationTests {
 		assertThat(rel1.getStatusCode()).isEqualTo(HttpStatus.OK);
 		assertThat(rel1.getBody().idempotent()).isFalse();
 
-		// release twice — idempotent, stock not double-restored
+		// 같은 키로 두 번째 release — 멱등, 재고가 두 번 복구되지 않아야.
 		ResponseEntity<ReservationResponse> rel2 = http.postForEntity(
 				"/inventories/release",
 				new ReleaseRequest(productId, orderId),
@@ -109,7 +109,7 @@ class InventoryServiceApplicationTests {
 
 	@Test
 	void rejectsReserveWhenOutOfStock() {
-		Long productId = 1003L; // seeded with 25
+		Long productId = 1003L; // V2 시드: 25
 		Long orderId = 9002L;
 
 		ResponseEntity<String> response = http.postForEntity(
@@ -123,7 +123,7 @@ class InventoryServiceApplicationTests {
 
 	@Test
 	void prometheusEndpointExposesJvmAndHttpAndLockMetrics() {
-		// Trigger a reserve to populate inventory.lock.acquire timer
+		// inventory.lock.acquire timer 가 비어있지 않게 reserve 한 번 발사.
 		http.postForEntity("/inventories/reserve",
 				new ReserveRequest(1002L, 9999L, 1), ReservationResponse.class);
 
