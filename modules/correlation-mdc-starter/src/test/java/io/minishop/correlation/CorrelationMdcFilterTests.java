@@ -22,7 +22,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * 필터 단위 테스트 — 활성 Span 의 trace_id / span_id 가 doFilter 가 호출되는 중에는 MDC 에
  * 들어가 있고, 요청 종료 후엔 정리되어야 한다.
+ *
+ * <p>{@code @SuppressWarnings("try")} — try-with-resources 의 {@link Scope} 는 본문에서
+ * 참조할 필요가 없는 lifecycle handle. close 시점 (scope 종료) 만 의미가 있어 변수명이
+ * {@code ignored} 인 것이 의도다.
  */
+@SuppressWarnings("try")
 class CorrelationMdcFilterTests {
 
     private OpenTelemetrySdk otel;
