@@ -1,5 +1,10 @@
 # mini-shop-observability
 
+[![CI](https://github.com/ssa1004/mini-shop-observability/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ssa1004/mini-shop-observability/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://openjdk.org/projects/jdk/21/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-6DB33F.svg)](https://spring.io/projects/spring-boot)
+
 작은 이커머스 마이크로서비스(주문/결제/재고) 위에 **옵저버빌리티 스택 (운영 중인 시스템의 상태를 메트릭·로그·트레이스로 들여다보는 도구 모음)**, **자체 Spring Boot 운영 라이브러리**, **장애 분석 회고**를 함께 쌓아가는 학습용 프로젝트입니다.
 
 > 운영자 관점에서 무엇을 보고 어떻게 판단했는지를 함께 기록합니다.
