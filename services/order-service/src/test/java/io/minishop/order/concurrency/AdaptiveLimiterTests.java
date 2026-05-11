@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -123,21 +125,33 @@ class AdaptiveLimiterTests {
         AtomicInteger acquired = new AtomicInteger(0);
         AtomicInteger rejected = new AtomicInteger(0);
 
+        // 모든 thread 가 acquire 를 거의 동시에 시도하도록 start gate 로 동기화.
+        // 없으면 CI 처럼 느린 환경에선 thread 가 차례로 실행돼 거절이 발생하지 않을 수 있음.
+        int n = 20;
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(n);
         List<Thread> threads = new ArrayList<>();
-        for (int i = 0; i < 20; i++) {
+        for (int i = 0; i < n; i++) {
             Thread t = new Thread(() -> {
                 try {
+                    start.await();
                     AdaptiveLimiter.Listener l = limiter.acquire();
                     acquired.incrementAndGet();
                     sleepBriefly();
                     l.onSuccess();
                 } catch (LimitExceededException e) {
                     rejected.incrementAndGet();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    done.countDown();
                 }
             });
             threads.add(t);
             t.start();
         }
+        start.countDown();
+        assertThat(done.await(10, TimeUnit.SECONDS)).isTrue();
         for (Thread t : threads) t.join();
 
         // 동시 20개 요청 중 일부는 거절되어야 (limit=5 + queueSize=0).
