@@ -18,7 +18,7 @@
 - Spring Kafka
 - Micrometer + OpenTelemetry Spring Boot starter (Micrometer 는 메트릭 facade, OTel 은 trace/log 표준)
 - Testcontainers (PostgreSQL, Kafka, Redis — 테스트 때 진짜 컨테이너를 띄움)
-- `modules/` 의 자체 starter (`slow-query-detector`, `jfr-recorder-starter`, `correlation-mdc-starter`) 를 composite build (`includeBuild("../../modules/<name>")`) 로 참조 — mavenLocal publish 없이 로컬·CI 동일하게 빌드
+- `modules/` 의 자체 starter 는 composite build (`includeBuild("../../modules/<name>")`) 로 참조 — mavenLocal publish 없이 로컬·CI 동일하게 빌드. 현재는 order-service 가 `slow-query-detector` + `jfr-recorder-starter` 를 참조. `correlation-mdc-starter` 적용 + 나머지 두 서비스로의 확장은 후속 단계 (ROADMAP Phase 3 Step 7 잔여 항목 참조)
 
 ## 빌드 / 테스트
 
