@@ -9,14 +9,13 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -59,7 +58,7 @@ class OrderConsumerRebalanceListenerTests {
         Map<TopicPartition, OffsetAndMetadata> committed = new HashMap<>();
         committed.put(new TopicPartition("inventory.events", 0), new OffsetAndMetadata(42L));
         committed.put(new TopicPartition("payment.events", 1), null); // 새로 만든 partition
-        when(consumer.committed(any(Set.class))).thenReturn(committed);
+        when(consumer.committed(anySet())).thenReturn(committed);
 
         listener.onPartitionsAssigned(consumer, partitions);
 
@@ -75,7 +74,7 @@ class OrderConsumerRebalanceListenerTests {
     void assignedWithCommittedLookupFailureSwallowsAndStillCountsRebalance() {
         @SuppressWarnings("unchecked")
         Consumer<String, String> consumer = mock(Consumer.class);
-        when(consumer.committed(any(Set.class)))
+        when(consumer.committed(anySet()))
                 .thenThrow(new IllegalStateException("broker unreachable"));
 
         // 예외가 메트릭/로그용 lookup 에서 발생해도 listener 자체는 throw 하지 않아야 함.
