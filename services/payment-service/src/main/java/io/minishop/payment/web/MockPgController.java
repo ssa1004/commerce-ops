@@ -45,7 +45,7 @@ public class MockPgController {
         if (dice < props.timeoutRate()) {
             log.warn("mock-pg: simulating timeout for paymentId={}", request.paymentId());
             sleep(props.timeoutMs());
-            // Caller's read timeout will fire before this returns
+            // 이 return 이 실행되기 전에 호출자의 read timeout 이 먼저 발화한다 (의도된 in-doubt 시뮬레이션).
             return PgChargeResponse.fail("simulated timeout");
         }
 
