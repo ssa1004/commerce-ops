@@ -1,41 +1,37 @@
 # Services
 
-세 개의 Spring Boot 마이크로서비스를 둘 예정입니다. 현재는 서비스별 설계 README만 있고, 실제 Gradle 프로젝트와 소스 코드는 Phase 1에서 생성합니다.
+세 개의 Spring Boot 마이크로서비스. 각 서비스는 독립 Gradle 프로젝트로, root 에 settings.gradle 이 없고 `./gradlew` 가 서비스 디렉토리 안에 있습니다.
 
 | Service | Port | DB | 책임 |
 |---|---|---|---|
-| `order-service` | 8081 | `orderdb` | 주문 생성/조회, 결제·재고 오케스트레이션 |
-| `payment-service` | 8082 | `paymentdb` | 결제 처리, 외부 PG 호출 (mock) |
-| `inventory-service` | 8083 | `inventorydb` | 재고 차감/복구, Redis 캐시 |
+| [`order-service`](order-service/) | 8081 | `orderdb` | 주문 생성/조회, 결제·재고 동기 오케스트레이션, Outbox, Inbox + reconciliation, SAGA StateMachine (shadow) |
+| [`payment-service`](payment-service/) | 8082 | `paymentdb` | 결제 처리, mock PG 호출, afterCommit publish |
+| [`inventory-service`](inventory-service/) | 8083 | `inventorydb` | 재고 reserve/release, Redisson 분산락 + JPA `@Version` 낙관적 락, 멱등 키 (orderId, productId) |
+
+서비스별 깊은 설계는 각 디렉토리의 README 참고. 전체 흐름은 [../ARCHITECTURE.md](../ARCHITECTURE.md), 결정 배경은 [../docs/decision-log.md](../docs/decision-log.md).
 
 ## 공통 스택
 
-- Java 21 / Spring Boot 3.x / Gradle (Kotlin DSL — Gradle 빌드 스크립트를 Kotlin 으로 작성하는 모드)
-- Spring Web, Data JPA, Validation
+- Java 21 / Spring Boot 3.5 / Gradle (Kotlin DSL)
+- Spring Web, Data JPA, Validation, Actuator
 - Flyway (DB 마이그레이션 — 스키마 변경을 SQL 파일 시퀀스로 관리)
-- Spring Kafka (Phase 2부터)
-- Micrometer + OTel (Micrometer 는 메트릭 facade, OTel 은 trace/log 표준)
+- Spring Kafka
+- Micrometer + OpenTelemetry Spring Boot starter (Micrometer 는 메트릭 facade, OTel 은 trace/log 표준)
 - Testcontainers (PostgreSQL, Kafka, Redis — 테스트 때 진짜 컨테이너를 띄움)
+- `modules/` 의 자체 starter (`slow-query-detector`, `jfr-recorder-starter`, `correlation-mdc-starter`) 를 composite build (`includeBuild("../../modules/<name>")`) 로 참조 — mavenLocal publish 없이 로컬·CI 동일하게 빌드
 
-## Phase 1 생성 가이드
-
-각 서비스 디렉토리에서 Phase 1 작업으로 시작합니다. ADR-001은 현재 Spring Boot 3.x를 기준으로 하므로, Spring Initializr 기본값이 4.x로 바뀌어도 아래 예시는 3.x 라인으로 고정합니다. Phase 1 착수 시점에 Boot 4 전환 여부를 별도 결정한 뒤 생성합니다.
+## 빌드 / 테스트
 
 ```bash
-# Spring Initializr로 시작 (예시)
-curl https://start.spring.io/starter.zip \
-  -d type=gradle-project-kotlin \
-  -d language=java \
-  -d javaVersion=21 \
-  -d bootVersion=3.5.14 \
-  -d groupId=io.minishop \
-  -d artifactId=order-service \
-  -d dependencies=web,data-jpa,actuator,validation,flyway,postgresql \
-  -o starter.zip
-unzip starter.zip && rm starter.zip
+# 각 서비스 디렉토리에서
+cd services/order-service && ./gradlew build check
+cd services/payment-service && ./gradlew build check
+cd services/inventory-service && ./gradlew build check
 ```
+
+CI 매트릭스 (`.github/workflows/ci.yml`) 가 services/* 와 modules/* 를 각각 빌드합니다.
 
 ## 서비스 간 통신
 
-- **Phase 1**: 동기 REST 호출 (`order` → `payment` → `inventory`)
-- **Phase 2**: Kafka 이벤트로 전환 (`OrderCreated` / `PaymentSucceeded` / `InventoryReserved`)
+- **현재 (Phase 2 까지)**: 동기 REST (`order` → `inventory`, `order` → `payment`) + Kafka 이벤트 (`order.events` / `payment.events` / `inventory.events`) 비동기 알림 병행
+- **향후 (Phase 2 Step 3c)**: choreography (각 서비스가 이벤트만 듣고 자기 일 처리 + 다음 이벤트 발행) 로 흐름 자체 비동기화 — [ROADMAP](../ROADMAP.md#step-3c--kafka-choreography-로-흐름-자체-비동기화-각-서비스가-이벤트만-듣고-자기-일을-한-뒤-다음-이벤트를-발행하는-구조) 참조

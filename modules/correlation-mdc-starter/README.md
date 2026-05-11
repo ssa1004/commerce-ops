@@ -2,7 +2,7 @@
 
 OpenTelemetry **Trace ID / Span ID** 를 SLF4J **MDC** (Mapped Diagnostic Context — 이 스레드의 키밸류 저장소, 로그 패턴에서 `%X{key}` 로 출력 가능) 에 자동 주입. 로그·트레이스가 같은 ID 로 연결되도록.
 
-> ✅ **v0.1 — 최소 동작 (Servlet 한정)**: 한 요청 동안 trace_id / span_id 를 MDC 에 set, 종료 시 정리. WebFlux / Kafka consumer / 비즈니스 attribute (X-User-Id 등) 는 후속 단계 — ROADMAP Phase 3 Step 6 에서 확장.
+> ✅ **v0.1 — 최소 동작 (Servlet 한정)**: 한 요청 동안 trace_id / span_id 를 MDC 에 set, 종료 시 정리. WebFlux / Kafka consumer / 비즈니스 attribute (X-User-Id 등) 는 후속 단계 — ROADMAP Phase 3 Step 7 에서 확장.
 
 ## 배경
 

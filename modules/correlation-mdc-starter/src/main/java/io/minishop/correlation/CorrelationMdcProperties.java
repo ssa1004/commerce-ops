@@ -5,12 +5,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * correlation-mdc-starter 의 ConfigurationProperties.
  *
- * <p>설계 메모 — Phase 1 의 *최소* 구현 범위.
+ * <p>v0.1 범위:
  * <ul>
- *   <li>현재는 trace_id / span_id 만 MDC 에 동기화. 비즈니스 attribute (X-User-Id 헤더 → MDC 등)
- *       은 ADR-013 의 PII 마스킹 정책과 함께 후속 단계에서 도입.</li>
- *   <li>WebFlux / Kafka consumer / Reactor Context 도 후속 단계 — 본 starter 의 첫 동작 단위는
- *       Spring MVC (Servlet) 한정.</li>
+ *   <li>trace_id / span_id 만 MDC 에 동기화. 비즈니스 attribute (X-User-Id 헤더 → MDC 등) 은
+ *       ADR-013 의 PII 마스킹 정책과 함께 후속 단계.</li>
+ *   <li>Spring MVC (Servlet) 한정. WebFlux / Kafka consumer / Reactor Context 는 후속.</li>
  * </ul>
  *
  * @param enabled 모듈 활성 여부. 기본 true.

@@ -7,8 +7,8 @@
 | [slow-query-detector](slow-query-detector/) | ✅ v0.1 — order-service 적용 | JPA/JDBC 슬로우·N+1 쿼리 자동 감지 → 메트릭/로그 (ADR-012) |
 | [jfr-recorder-starter](jfr-recorder-starter/) | ✅ v0.1 — order-service 적용 | JFR always-on continuous profiling — rolling chunk + actuator dump + S3/MinIO 자동 업로드 (ADR-015 / ADR-018 / ADR-024) |
 | [correlation-mdc-starter](correlation-mdc-starter/) | ✅ v0.1 (Servlet 한정) | OTel Span → SLF4J MDC 자동 동기화 (trace_id / span_id). WebFlux / Kafka / 비즈니스 attribute 는 후속 (ADR-025) |
-| [actuator-extras](actuator-extras/) | 📝 설계 (Phase 3 Step 4) | HikariCP / 스레드풀 / 트랜잭션 통계 커스텀 endpoint |
-| [chaos-injector](chaos-injector/) | 📝 설계 (Phase 3 Step 5) | 메서드 단위로 지연/실패 주입 (테스트·데모용) |
+| [actuator-extras](actuator-extras/) | 📝 설계 (Phase 3 Step 8) | HikariCP / 스레드풀 / 트랜잭션 통계 커스텀 endpoint |
+| [chaos-injector](chaos-injector/) | 📝 설계 (Phase 3 Step 9) | 메서드 단위로 지연/실패 주입 (테스트·데모용) |
 
 > 📝 설계 단계 모듈은 디렉토리에 README 만 있고 `src/` 는 없습니다. 의존성으로 추가해도 동작 코드가 없어 사용 불가 — 정식 구현 시점에 v0.1 태그가 붙고 위 표가 ✅ 로 바뀝니다. 상세 단계는 [ROADMAP](../ROADMAP.md) 참조.
 
