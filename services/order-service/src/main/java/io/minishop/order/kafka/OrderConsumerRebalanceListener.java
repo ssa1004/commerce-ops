@@ -1,5 +1,6 @@
 package io.minishop.order.kafka;
 
+import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tags;
 import org.apache.kafka.clients.consumer.Consumer;
@@ -11,6 +12,7 @@ import org.springframework.kafka.listener.ConsumerAwareRebalanceListener;
 
 import java.util.Collection;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Kafka consumer rebalance 시점의 안전 지점 핸들러.
@@ -51,10 +53,20 @@ public class OrderConsumerRebalanceListener implements ConsumerAwareRebalanceLis
 
     private final MeterRegistry meterRegistry;
     private final String groupTag;
+    /**
+     * 현재 할당된 partition 수. gauge 에 strong-reference 로 한 번만 등록 — {@link #onPartitionsAssigned}
+     * 마다 {@code meterRegistry.gauge(name, tags, partitions.size())} 를 호출하면 매 rebalance 마다 새
+     * Integer (박싱) 가 등록되어 GC 후 NaN 으로 보일 수 있다 (Micrometer 가 첫 등록한 instance 만 들고 있음).
+     */
+    private final AtomicInteger assignedPartitions = new AtomicInteger(0);
 
     public OrderConsumerRebalanceListener(String groupTag, MeterRegistry meterRegistry) {
         this.groupTag = groupTag;
         this.meterRegistry = meterRegistry;
+        Gauge.builder("kafka.consumer.partitions.assigned", assignedPartitions, AtomicInteger::doubleValue)
+                .tags(Tags.of("group", groupTag))
+                .description("현재 이 인스턴스에 할당된 partition 수 (rebalance 시점 갱신)")
+                .register(meterRegistry);
     }
 
     /**
@@ -86,6 +98,10 @@ public class OrderConsumerRebalanceListener implements ConsumerAwareRebalanceLis
         }
         meterRegistry.counter("kafka.consumer.rebalance",
                 Tags.of("group", groupTag, "phase", "revoke_after_commit")).increment();
+        // cooperative-sticky 에선 onPartitionsAssigned 가 증가분만 받기 때문에, revoke 가 일어나는
+        // 시점에 게이지를 줄여둬야 현재 상태와 어긋나지 않는다. consumer.assignment() 가 가장 정확하지만
+        // 호출 시점에 따라 revoke 적용 전/후가 다를 수 있어 *delta 적용* 으로 단순화.
+        assignedPartitions.updateAndGet(prev -> Math.max(0, prev - partitions.size()));
     }
 
     /**
@@ -99,8 +115,9 @@ public class OrderConsumerRebalanceListener implements ConsumerAwareRebalanceLis
         }
         meterRegistry.counter("kafka.consumer.rebalance",
                 Tags.of("group", groupTag, "phase", "assign")).increment();
-        meterRegistry.gauge("kafka.consumer.partitions.assigned",
-                Tags.of("group", groupTag), partitions.size());
+        // cooperative-sticky 는 *증가분만* 들어오므로 += , eager assignor 도 revoke 에서 줄여둔 상태라
+        // delta 합산이 일관 결과.
+        assignedPartitions.addAndGet(partitions.size());
         try {
             Map<TopicPartition, OffsetAndMetadata> committed = consumer.committed(new java.util.HashSet<>(partitions));
             log.info("Kafka rebalance — assigned: group={} partitions={} startOffsets={}",
@@ -123,6 +140,8 @@ public class OrderConsumerRebalanceListener implements ConsumerAwareRebalanceLis
         }
         meterRegistry.counter("kafka.consumer.rebalance",
                 Tags.of("group", groupTag, "phase", "lost")).increment();
+        // lost 는 revoke 콜백을 거치지 않으므로 게이지를 직접 차감.
+        assignedPartitions.updateAndGet(prev -> Math.max(0, prev - partitions.size()));
         log.warn("Kafka rebalance — partitions lost (heartbeat / connection broke): group={} partitions={}",
                 groupTag, formatPartitions(partitions));
     }
