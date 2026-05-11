@@ -91,9 +91,9 @@ flowchart LR
 
 | Starter | 한 줄 설명 | 다른 레포에서 쓰는 법 |
 |---|---|---|
-| `slow-query-detector` | JPA/JDBC slow query + N+1 패턴 자동 감지 → `slow_query_total` / `n_plus_one_total` 카운터 | `implementation("io.minishop:slow-query-detector:0.1.0")` |
-| `jfr-recorder-starter` | JFR continuous profiling 24/7 + `/actuator/jfr` ad-hoc dump + S3/MinIO 자동 업로드 | `implementation("io.minishop:jfr-recorder-starter:0.1.0")` |
-| `correlation-mdc-starter` | OTel `Span.current()` → SLF4J MDC `trace_id` / `span_id` 자동 동기화 | `implementation("io.minishop:correlation-mdc-starter:0.1.0")` |
+| `slow-query-detector` | JPA/JDBC slow query + N+1 패턴 자동 감지 → `slow_query_total` / `n_plus_one_total` 카운터 | `implementation("io.minishop:slow-query-detector:0.1.0-SNAPSHOT")` |
+| `jfr-recorder-starter` | JFR continuous profiling 24/7 + `/actuator/jfr` ad-hoc dump + S3/MinIO 자동 업로드 | `implementation("io.minishop:jfr-recorder-starter:0.1.0-SNAPSHOT")` |
+| `correlation-mdc-starter` | OTel `Span.current()` → SLF4J MDC `trace_id` / `span_id` 자동 동기화 | `implementation("io.minishop:correlation-mdc-starter:0.1.0-SNAPSHOT")` |
 
 전부 Spring Boot AutoConfiguration — *의존성만 추가하면 자동 활성*. 끄고 싶으면 각 starter 의 `mini-shop.<name>.enabled=false`. 자세한 내부 동작은 [`modules/<name>/README.md`](modules/) 참조.
 
