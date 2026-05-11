@@ -102,12 +102,13 @@ public class OrderSagaCoordinator {
             return;
         }
 
+        String expected = isPaid ? "paid" : (outcome == null ? "unknown_failed" : outcome.name());
         meterRegistry.counter("order.saga.consistency",
                 "result", "mismatch",
-                "expected", isPaid ? "paid" : (outcome == null ? "unknown_failed" : outcome.name()),
+                "expected", expected,
                 "actual", state.name()).increment();
         log.warn("saga.mismatch expected={} actual={} (outcome={}, isPaid={})",
-                state, state, outcome, isPaid);
+                expected, state, outcome, isPaid);
 
         if (enforce) {
             throw new IllegalStateException(
