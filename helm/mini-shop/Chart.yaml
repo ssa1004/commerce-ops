@@ -1,7 +1,7 @@
 apiVersion: v2
 name: mini-shop
 description: |
-  mini-shop-observability 의 3개 마이크로서비스 (order / payment / inventory) 를 한 release
+  commerce-ops 의 3개 마이크로서비스 (order / payment / inventory) 를 한 release
   로 묶는 umbrella chart. starter 모듈 (slow-query-detector / jfr-recorder-starter /
   correlation-mdc-starter) 은 다른 7 sister repo 가 dependency 로 가져다 쓰므로 chart 에
   포함하지 않는다. 옵저버빌리티 stack (Prometheus / Grafana / Loki / Tempo) 도 외부 helm
@@ -15,9 +15,9 @@ keywords:
   - observability
   - opentelemetry
   - umbrella
-home: https://github.com/ssa1004/mini-shop-observability
+home: https://github.com/ssa1004/commerce-ops
 sources:
-  - https://github.com/ssa1004/mini-shop-observability
+  - https://github.com/ssa1004/commerce-ops
 maintainers:
   - name: ssa1004
     url: https://github.com/ssa1004

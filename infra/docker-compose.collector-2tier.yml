@@ -20,7 +20,7 @@
 # `resolver.dns` (headless service 의 endpoint slice 를 watch) 로 동적 멤버십을
 # 사용. backend pool 의 scale-out/scale-in 도 그쪽에선 무중단.
 
-name: mini-shop-observability
+name: commerce-ops
 
 services:
   # 기존 otel-collector 를 *agent* 로 재구성 — config 만 교체.

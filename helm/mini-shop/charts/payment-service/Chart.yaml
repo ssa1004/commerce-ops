@@ -10,9 +10,9 @@ keywords:
   - payment
   - mock-pg
   - spring-boot
-home: https://github.com/ssa1004/mini-shop-observability
+home: https://github.com/ssa1004/commerce-ops
 sources:
-  - https://github.com/ssa1004/mini-shop-observability/tree/main/services/payment-service
+  - https://github.com/ssa1004/commerce-ops/tree/main/services/payment-service
 maintainers:
   - name: ssa1004
     url: https://github.com/ssa1004
