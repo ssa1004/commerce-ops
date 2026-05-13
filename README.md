@@ -38,7 +38,7 @@
 | [notification-hub](https://github.com/ssa1004/notification-hub) | 다채널 알림 fan-out (push/email/SMS/카카오) | starter consumer |
 | [search-service](https://github.com/ssa1004/search-service) | 상품 검색 (ES + CDC + alias swap) | starter consumer |
 | [billing-platform](https://github.com/ssa1004/billing-platform) | B2B 결제/청구/정산 (실시간 + 사용량 기반) | starter consumer |
-| [resell-orderbook](https://github.com/ssa1004/resell-orderbook) | 한정판 리셀 거래소 (ASK/BID 매칭) | starter consumer |
+| [bid-ask-marketplace](https://github.com/ssa1004/bid-ask-marketplace) | 한정판 리셀 거래소 (ASK/BID 매칭) | starter consumer |
 | [gpu-job-orchestrator](https://github.com/ssa1004/gpu-job-orchestrator) | GPU 학습/추론 잡 오케스트레이션 (K8s Job + 콜백) | starter consumer |
 | **commerce-ops** (본 레포) | 이커머스 마이크로서비스 + 옵저버빌리티 + Spring Boot Ops Toolkit (starter 3 종) | starter provider |
 
@@ -60,7 +60,7 @@ flowchart LR
     NOTI[notification-hub]
     SEARCH[search-service]
     BILL[billing-platform]
-    RESELL[resell-orderbook]
+    RESELL[bid-ask-marketplace]
     GPU[gpu-job-orchestrator]
   end
 
