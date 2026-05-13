@@ -1,5 +1,7 @@
 # Security Policy
 
+> OWASP API Security Top 10 (2023) 와의 매핑 / 점검 결과는 [docs/security/owasp-mapping.md](docs/security/owasp-mapping.md) 참조.
+
 ## 학습용 레포 안내
 
 본 저장소는 **학습 / 포트폴리오 목적**의 마이크로서비스 + 옵저버빌리티 스택 데모입니다.
