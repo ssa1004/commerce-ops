@@ -1,0 +1,185 @@
+---
+# Backstage Software Catalog 정의 — mini-shop-observability.
+# 3 microservice (order / inventory / payment) + 4 Spring Boot starter library + 1 dev tool (chaos-injector).
+# system 정의는 ssa1004/auth-service 레포에 있다.
+
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: mini-shop-order-service
+  description: "Mini e-commerce 주문 서비스 — Spring Boot + Kafka. 결제 / 재고와 Saga 로 연동, OpenTelemetry 계측"
+  annotations:
+    github.com/project-slug: ssa1004/mini-shop-observability
+    backstage.io/source-location: url:https://github.com/ssa1004/mini-shop-observability/tree/main/services/order-service
+  tags:
+    - microservices
+    - opentelemetry
+    - kafka
+    - spring-boot
+  links:
+    - url: https://github.com/ssa1004/mini-shop-observability/tree/main/services/order-service
+      title: order-service source
+spec:
+  type: service
+  lifecycle: experimental
+  owner: user:ssa1004
+  system: ssa1004-portfolio
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: mini-shop-inventory-service
+  description: "Mini e-commerce 재고 서비스 — Spring Boot + Kafka. 주문 이벤트 구독 → 재고 차감 / 복원"
+  annotations:
+    github.com/project-slug: ssa1004/mini-shop-observability
+    backstage.io/source-location: url:https://github.com/ssa1004/mini-shop-observability/tree/main/services/inventory-service
+  tags:
+    - microservices
+    - opentelemetry
+    - kafka
+    - spring-boot
+  links:
+    - url: https://github.com/ssa1004/mini-shop-observability/tree/main/services/inventory-service
+      title: inventory-service source
+spec:
+  type: service
+  lifecycle: experimental
+  owner: user:ssa1004
+  system: ssa1004-portfolio
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: mini-shop-payment-service
+  description: "Mini e-commerce 결제 서비스 — Spring Boot + Kafka. 주문 이벤트 구독 → 결제 처리 / 보상"
+  annotations:
+    github.com/project-slug: ssa1004/mini-shop-observability
+    backstage.io/source-location: url:https://github.com/ssa1004/mini-shop-observability/tree/main/services/payment-service
+  tags:
+    - microservices
+    - opentelemetry
+    - kafka
+    - spring-boot
+  links:
+    - url: https://github.com/ssa1004/mini-shop-observability/tree/main/services/payment-service
+      title: payment-service source
+spec:
+  type: service
+  lifecycle: experimental
+  owner: user:ssa1004
+  system: ssa1004-portfolio
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: actuator-extras
+  description: "Spring Boot Ops Toolkit — actuator 확장 starter (custom health indicator, info contributor, metrics tag)"
+  annotations:
+    github.com/project-slug: ssa1004/mini-shop-observability
+    backstage.io/source-location: url:https://github.com/ssa1004/mini-shop-observability/tree/main/modules/actuator-extras
+  tags:
+    - spring-boot-starter
+    - observability
+    - actuator
+  links:
+    - url: https://github.com/ssa1004/mini-shop-observability/tree/main/modules/actuator-extras
+      title: actuator-extras source
+spec:
+  type: library
+  lifecycle: experimental
+  owner: user:ssa1004
+  system: ssa1004-portfolio
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: correlation-mdc-starter
+  description: "Spring Boot Ops Toolkit — Correlation ID + MDC propagation starter (HTTP / Kafka / WebClient / async)"
+  annotations:
+    github.com/project-slug: ssa1004/mini-shop-observability
+    backstage.io/source-location: url:https://github.com/ssa1004/mini-shop-observability/tree/main/modules/correlation-mdc-starter
+  tags:
+    - spring-boot-starter
+    - observability
+    - mdc
+    - tracing
+  links:
+    - url: https://github.com/ssa1004/mini-shop-observability/tree/main/modules/correlation-mdc-starter
+      title: correlation-mdc-starter source
+spec:
+  type: library
+  lifecycle: experimental
+  owner: user:ssa1004
+  system: ssa1004-portfolio
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: jfr-recorder-starter
+  description: "Spring Boot Ops Toolkit — JFR (Java Flight Recorder) 자동 시작 / 주기 export starter"
+  annotations:
+    github.com/project-slug: ssa1004/mini-shop-observability
+    backstage.io/source-location: url:https://github.com/ssa1004/mini-shop-observability/tree/main/modules/jfr-recorder-starter
+  tags:
+    - spring-boot-starter
+    - observability
+    - jfr
+    - profiling
+  links:
+    - url: https://github.com/ssa1004/mini-shop-observability/tree/main/modules/jfr-recorder-starter
+      title: jfr-recorder-starter source
+spec:
+  type: library
+  lifecycle: experimental
+  owner: user:ssa1004
+  system: ssa1004-portfolio
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: slow-query-detector
+  description: "Spring Boot Ops Toolkit — slow query 감지 / 메트릭 / 로그 starter (P6Spy 기반)"
+  annotations:
+    github.com/project-slug: ssa1004/mini-shop-observability
+    backstage.io/source-location: url:https://github.com/ssa1004/mini-shop-observability/tree/main/modules/slow-query-detector
+  tags:
+    - spring-boot-starter
+    - observability
+    - slow-query
+    - p6spy
+  links:
+    - url: https://github.com/ssa1004/mini-shop-observability/tree/main/modules/slow-query-detector
+      title: slow-query-detector source
+spec:
+  type: library
+  lifecycle: experimental
+  owner: user:ssa1004
+  system: ssa1004-portfolio
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: chaos-injector
+  description: "장애 주입 / chaos engineering 모듈 — latency / fail / cpu / memory toggle"
+  annotations:
+    github.com/project-slug: ssa1004/mini-shop-observability
+    backstage.io/source-location: url:https://github.com/ssa1004/mini-shop-observability/tree/main/modules/chaos-injector
+  tags:
+    - chaos-engineering
+    - sre
+    - fault-injection
+  links:
+    - url: https://github.com/ssa1004/mini-shop-observability/tree/main/modules/chaos-injector
+      title: chaos-injector source
+spec:
+  type: library
+  lifecycle: experimental
+  owner: user:ssa1004
+  system: ssa1004-portfolio
