@@ -11,9 +11,9 @@ keywords:
   - distributed-lock
   - idempotency
   - spring-boot
-home: https://github.com/ssa1004/mini-shop-observability
+home: https://github.com/ssa1004/commerce-ops
 sources:
-  - https://github.com/ssa1004/mini-shop-observability/tree/main/services/inventory-service
+  - https://github.com/ssa1004/commerce-ops/tree/main/services/inventory-service
 maintainers:
   - name: ssa1004
     url: https://github.com/ssa1004
