@@ -17,7 +17,7 @@ groups:
           description: |
             5분간 p99 응답시간이 500ms를 초과. SLO(p99 < 500ms) 위반.
             Tempo로 가서 같은 시간대 trace를 점프해 어느 span이 비대해졌는지 확인할 것.
-          runbook_url: https://github.com/ssa1004/mini-shop-observability/blob/main/docs/runbook/order-p99-latency-high.md
+          runbook_url: https://github.com/ssa1004/commerce-ops/blob/main/docs/runbook/order-p99-latency-high.md
 
       - alert: order_error_rate_spike
         expr: |
@@ -35,7 +35,7 @@ groups:
           description: |
             4xx(409 OUT_OF_STOCK / 402 PAYMENT_DECLINED 등)는 비즈니스 결과라 카운트하지 않음.
             5xx만 카운트. 502/503은 의존 서비스(inventory/payment) 장애를 강하게 시사.
-          runbook_url: https://github.com/ssa1004/mini-shop-observability/blob/main/docs/runbook/order-error-rate-spike.md
+          runbook_url: https://github.com/ssa1004/commerce-ops/blob/main/docs/runbook/order-error-rate-spike.md
 
   - name: mini-shop.runtime-saturation
     interval: 30s
@@ -55,7 +55,7 @@ groups:
           description: |
             DB 커넥션 풀이 한계에 가까움. 외부 호출이 트랜잭션 안에 있는지, 슬로우 쿼리/락 대기 중인지 확인.
             대시보드: JVM + HTTP > Hikari 패널. trace로 어떤 요청이 커넥션을 오래 쥐는지 추적.
-          runbook_url: https://github.com/ssa1004/mini-shop-observability/blob/main/docs/runbook/hikari-pool-saturation.md
+          runbook_url: https://github.com/ssa1004/commerce-ops/blob/main/docs/runbook/hikari-pool-saturation.md
 
       - alert: jvm_gc_pause_too_long
         expr: |
@@ -72,7 +72,7 @@ groups:
           description: |
             Old Gen 압박 또는 Humongous allocation 의심.
             JFR/async-profiler로 할당 핫스팟 확인. 단기적으론 -Xmx 상향, 장기적으론 메모리 누수 후보 분석.
-          runbook_url: https://github.com/ssa1004/mini-shop-observability/blob/main/docs/runbook/gc-pause-too-long.md
+          runbook_url: https://github.com/ssa1004/commerce-ops/blob/main/docs/runbook/gc-pause-too-long.md
 
   - name: mini-shop.business
     interval: 30s
@@ -93,7 +93,7 @@ groups:
           description: |
             Hot product에 대한 contention 또는 락 lease가 너무 짧을 가능성.
             대상 productId가 어떤 것인지(`/inventories/{id}` 추세), 락 wait/lease 설정 점검.
-          runbook_url: https://github.com/ssa1004/mini-shop-observability/blob/main/docs/runbook/inventory-lock-timeout-high.md
+          runbook_url: https://github.com/ssa1004/commerce-ops/blob/main/docs/runbook/inventory-lock-timeout-high.md
 
       - alert: n_plus_one_detected
         expr: |
@@ -106,7 +106,7 @@ groups:
           description: |
             slow-query-detector 모듈이 같은 정규화 SQL이 임계 횟수 반복되는 패턴을 감지함.
             로그에서 "Suspected N+1 (...)" 메시지의 stack trace로 어느 호출자가 만들었는지 식별 → @EntityGraph / fetch join으로 수정.
-          runbook_url: https://github.com/ssa1004/mini-shop-observability/blob/main/docs/runbook/n-plus-one-detected.md
+          runbook_url: https://github.com/ssa1004/commerce-ops/blob/main/docs/runbook/n-plus-one-detected.md
 
   - name: mini-shop.client-resilience
     interval: 30s
@@ -132,7 +132,7 @@ groups:
             거절 중 (outcome=upstream_limited). cascade 차단의 *정상 동작* 이지만, 5% 이상이면
             backend 의 능력 자체에 문제가 있다는 신호 — payment/inventory 응답시간, hikari 포화,
             GC pause 와 함께 봐야 함.
-          runbook_url: https://github.com/ssa1004/mini-shop-observability/blob/main/docs/runbook/client-concurrency-limit-saturated.md
+          runbook_url: https://github.com/ssa1004/commerce-ops/blob/main/docs/runbook/client-concurrency-limit-saturated.md
 
   - name: mini-shop.observability-pipeline
     interval: 30s
@@ -150,4 +150,4 @@ groups:
             tail_sampling 의 num_traces 한도에 닿거나 memory_limiter 가 발동해 span 이 거부되고 있음.
             error / slow trace 의 보존율 100% 가 깨질 위험 — 가장 보고 싶은 trace 가 누락된다.
             대시보드에서 policy 별 sampled 비율, expected_new_traces_per_sec 대비 실제 유입을 먼저 확인.
-          runbook_url: https://github.com/ssa1004/mini-shop-observability/blob/main/docs/runbook/tail-sampling-buffer-saturation.md
+          runbook_url: https://github.com/ssa1004/commerce-ops/blob/main/docs/runbook/tail-sampling-buffer-saturation.md

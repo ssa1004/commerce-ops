@@ -1,6 +1,6 @@
 # auth-service stub (JWK Set)
 
-`mini-shop-observability` 의 *통합 데모* 에서 [auth-service](https://github.com/ssa1004/auth-service) 자리를 채우는 정적 stub. 실제 OAuth2 / OIDC 서버를 띄우지 않고, JWK Set endpoint 만 흉내 냅니다.
+`commerce-ops` 의 통합 데모에서 [auth-service](https://github.com/ssa1004/auth-service) 자리를 채우는 정적 stub. 실제 OAuth2 / OIDC 서버를 띄우지 않고, JWK Set endpoint 만 흉내 냅니다.
 
 ## 무엇을 노출하나
 

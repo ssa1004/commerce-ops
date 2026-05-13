@@ -1,11 +1,11 @@
-# mini-shop-observability
+# commerce-ops
 
-[![CI](https://github.com/ssa1004/mini-shop-observability/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ssa1004/mini-shop-observability/actions/workflows/ci.yml)
+[![CI](https://github.com/ssa1004/commerce-ops/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ssa1004/commerce-ops/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://openjdk.org/projects/jdk/21/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-6DB33F.svg)](https://spring.io/projects/spring-boot)
 
-작은 이커머스 마이크로서비스(주문/결제/재고) 위에 **옵저버빌리티 스택 (운영 중인 시스템의 상태를 메트릭·로그·트레이스로 들여다보는 도구 모음)**, **자체 Spring Boot 운영 라이브러리**, **장애 분석 회고**를 함께 쌓아가는 학습용 프로젝트입니다.
+이커머스 마이크로서비스(주문/결제/재고) 위에 **옵저버빌리티 스택 (운영 중인 시스템의 상태를 메트릭·로그·트레이스로 들여다보는 도구 모음)**, **자체 Spring Boot 운영 라이브러리**, **장애 분석 회고**를 함께 쌓아가는 production-grade observability platform 입니다.
 
 > 운영자 관점에서 무엇을 보고 어떻게 판단했는지를 함께 기록합니다.
 
@@ -40,7 +40,7 @@
 | [billing-platform](https://github.com/ssa1004/billing-platform) | B2B 결제/청구/정산 (실시간 + 사용량 기반) | starter consumer |
 | [resell-orderbook](https://github.com/ssa1004/resell-orderbook) | 한정판 리셀 거래소 (ASK/BID 매칭) | starter consumer |
 | [gpu-job-orchestrator](https://github.com/ssa1004/gpu-job-orchestrator) | GPU 학습/추론 잡 오케스트레이션 (K8s Job + 콜백) | starter consumer |
-| **mini-shop-observability** (본 레포) | 미니 이커머스 + 옵저버빌리티 + Spring Boot Ops Toolkit (starter 3 종) | starter provider |
+| **commerce-ops** (본 레포) | 이커머스 마이크로서비스 + 옵저버빌리티 + Spring Boot Ops Toolkit (starter 3 종) | starter provider |
 
 > 프로필 README: <https://github.com/ssa1004/ssa1004>
 
@@ -48,7 +48,7 @@
 
 ```mermaid
 flowchart LR
-  subgraph providers["mini-shop-observability (provider)"]
+  subgraph providers["commerce-ops (provider)"]
     SQ["slow-query-detector\n(JPA/JDBC slow + N+1 자동 감지)"]
     JFR["jfr-recorder-starter\n(continuous JFR + actuator dump)"]
     MDC["correlation-mdc-starter\n(OTel trace_id → SLF4J MDC)"]
@@ -336,7 +336,7 @@ ExternalSecret / SealedSecret 으로 미리 만들어 둔 Secret 을 `extraEnvFr
 ## Repository Layout
 
 ```
-mini-shop-observability/
+commerce-ops/
 ├── README.md / ARCHITECTURE.md / ROADMAP.md
 ├── docs/
 │   ├── decision-log.md      # ADR 25개
