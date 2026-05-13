@@ -13,7 +13,7 @@
 # 검증 / 데모 flow 는 scripts/integration-demo.sh 참조.
 # 본 override 는 8 레포 portfolio set 의 통합 시연용 — 운영 배포가 아니다.
 
-name: mini-shop-observability
+name: commerce-ops
 
 services:
   # auth-service stub — 정적 JWK Set 만 노출. 진짜 auth-service 를 띄우는 비용 (DB / Redis /

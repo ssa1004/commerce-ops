@@ -3,7 +3,7 @@
 #
 # 사용법: docker compose -f infra/docker-compose.yml up -d
 
-name: mini-shop-observability
+name: commerce-ops
 
 networks:
   default:

@@ -11,9 +11,9 @@ keywords:
   - saga
   - outbox
   - spring-boot
-home: https://github.com/ssa1004/mini-shop-observability
+home: https://github.com/ssa1004/commerce-ops
 sources:
-  - https://github.com/ssa1004/mini-shop-observability/tree/main/services/order-service
+  - https://github.com/ssa1004/commerce-ops/tree/main/services/order-service
 maintainers:
   - name: ssa1004
     url: https://github.com/ssa1004
