@@ -49,6 +49,7 @@ jobs:
             modules/slow-query-detector \
             modules/jfr-recorder-starter \
             modules/correlation-mdc-starter \
+            modules/actuator-extras \
             services/order-service \
             services/payment-service \
             services/inventory-service; do

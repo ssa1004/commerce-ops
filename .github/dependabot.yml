@@ -1,9 +1,9 @@
 # Dependabot — 의존성 / GitHub Actions 업데이트 PR 자동 생성.
 #
 # 이 레포는 root 에 settings.gradle 이 없는 *독립 Gradle 프로젝트 묶음* 이다 (services/* 3개 +
-# modules/* 3개, 각자 자기 wrapper). Dependabot 의 gradle ecosystem 은 한 directory 당 하나의
-# 빌드 트리만 본다 — 그래서 빌드 가능한 프로젝트마다 directory 항목을 따로 둔다. placeholder
-# 모듈 (actuator-extras / chaos-injector) 은 build.gradle.kts 가 없어 제외 — 정식 구현 시 추가.
+# modules/* 4개, 각자 자기 wrapper). Dependabot 의 gradle ecosystem 은 한 directory 당 하나의
+# 빌드 트리만 본다 — 그래서 빌드 가능한 프로젝트마다 directory 항목을 따로 둔다. 설계 단계
+# 모듈 (chaos-injector) 은 build.gradle.kts 가 없어 제외 — 정식 구현 시 추가.
 #
 # CI YAML 매트릭스와 동일한 원칙: services/* · modules/* 가 늘면 여기에 directory 만 추가.
 version: 2
@@ -42,6 +42,16 @@ updates:
 
   - package-ecosystem: gradle
     directory: /modules/correlation-mdc-starter
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: build
+    labels:
+      - dependencies
+      - gradle
+
+  - package-ecosystem: gradle
+    directory: /modules/actuator-extras
     schedule:
       interval: weekly
     commit-message:
