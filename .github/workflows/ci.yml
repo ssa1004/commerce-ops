@@ -62,7 +62,7 @@ jobs:
         run: ./gradlew build --no-daemon
       - name: Upload test report
         if: failure()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: test-report-${{ matrix.module }}
           path: modules/${{ matrix.module }}/build/reports/tests/
@@ -95,7 +95,7 @@ jobs:
         run: ./gradlew build check --no-daemon
       - name: Upload test report
         if: failure()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: test-report-${{ matrix.service }}
           path: services/${{ matrix.service }}/build/reports/tests/
