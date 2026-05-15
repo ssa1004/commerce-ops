@@ -43,7 +43,7 @@ dependencies {
 	compileOnly("io.micrometer:micrometer-core")
 	compileOnly("org.slf4j:slf4j-api")
 
-	api("net.ttddyy:datasource-proxy:1.10.1")
+	api("net.ttddyy:datasource-proxy:1.11.0")
 
 	annotationProcessor("org.springframework.boot:spring-boot-configuration-processor")
 
