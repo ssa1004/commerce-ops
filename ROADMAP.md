@@ -160,12 +160,13 @@
 - [ ] 비동기 Executor 데코레이터 (Reactor / `@Async`) — 다른 스레드로 작업이 넘어갈 때도 MDC 가 따라가도록
 - [ ] 비즈니스 attribute (X-User-Id, X-Request-Id 등) 의 마스킹 정책 통합 (ADR-013)
 
-> 아래 Step 8~9 는 placeholder 모듈 — `modules/<name>/` 에 README 만 있고 `src/` 가 없는 상태. 정식 구현 시 v0.1 publish + composite build 등록까지 한 단위.
+> 아래 Step 9 는 placeholder 모듈 — `modules/chaos-injector/` 에 README 만 있고 `src/` 가 없는 상태. 정식 구현 시 v0.1 publish + composite build 등록까지 한 단위.
 
-### Step 8 — actuator-extras (placeholder)
-- [ ] `/actuator/hikari` (DB 커넥션 풀의 active/idle/pending + 최근 느렸던 acquire 기록)
+### Step 8 — actuator-extras ✅ v0.1 (HikariCP 한정)
+- [x] `/actuator/hikari` — 모든 HikariCP 풀의 active/idle/pending + maxPoolSize/minIdle 설정값 스냅샷. `HikariPoolMXBean` / `HikariConfigMXBean` 직접 read, `@ConditionalOnAvailableEndpoint` 로 노출 시에만 bean 생성 (10개 단위 테스트)
 - [ ] `/actuator/threadpools` (모든 `ThreadPoolTaskExecutor` 의 현재 상태)
 - [ ] `/actuator/transactions` (지금 진행 중인 트랜잭션 추적)
+- [ ] 최근 느렸던 커넥션 acquire 기록 (hikari endpoint 확장)
 
 ### Step 9 — chaos-injector (placeholder)
 - [ ] AOP (Aspect-Oriented Programming — 메서드 호출 앞뒤에 별도 로직을 끼워 넣는 기법) 기반 메서드 단위 지연/실패 주입
