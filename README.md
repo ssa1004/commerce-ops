@@ -147,7 +147,7 @@ docker compose \
 | **Phase 0** — 레포 스캐폴드 + 인프라 설정 | ✅ |
 | **Phase 1** — 3개 서비스 + 동기 SAGA + JVM/HTTP 대시보드 | ✅ |
 | **Phase 2** — OTel 자동계측, Tempo/Loki, 알람 5개, Outbox/Inbox + reconciliation, tail-based sampling, 첫 케이스 스터디 | ✅ (Step 3c — choreography 만 남음) |
-| **Phase 3** — 자체 Spring Boot 운영 라이브러리 (`modules/`) | 진행 중 (3/5 — slow-query-detector, jfr-recorder-starter, correlation-mdc-starter 구현 / 나머지 2개는 설계 단계) |
+| **Phase 3** — 자체 Spring Boot 운영 라이브러리 (`modules/`) | 진행 중 (4/5 — slow-query-detector, jfr-recorder-starter, correlation-mdc-starter, actuator-extras v0.1 / chaos-injector 만 설계 단계) |
 | **Phase 4** — 카오스 시나리오 누적 + 케이스 스터디 누적 (지속) | 진행 중 |
 
 자세한 단계는 [ROADMAP.md](ROADMAP.md) 참고.

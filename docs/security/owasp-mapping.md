@@ -246,7 +246,7 @@
 | Helm ingress prefix | `helm/.../ingress.yaml` 와 `values-prod.yaml` 의 `/api/v1/orders` 등은 *향후* 자리 (controller 가 아직 `/orders`) — 운영 배포 시 ingress 가 `/api/v1/orders` → `/orders` rewrite 하거나 controller 가 `/api/v1` prefix 를 추가 |
 | 환경 구분 | `dev` (compose) ↔ `prod` (`values-prod.yaml`) 가 명확히 분리. `deployEnv` env 가 OTel resource attribute `deployment.environment` 로 전파 — 트레이스에서 환경별 분리 가능 |
 | Service catalog | [catalog-info.yaml](../../catalog-info.yaml) — Backstage 표준. 3 서비스 + 5 모듈 + 1 컴포넌트 (auth-stub) 명시 |
-| 미배포 컴포넌트 | `modules/actuator-extras` 와 `modules/chaos-injector` 는 *설계 단계* (README only) — 의존성으로 추가해도 동작 없음. ROADMAP Phase 3 Step 8/9 자리 |
+| 미배포 컴포넌트 | `modules/chaos-injector` 는 *설계 단계* (README only) — 의존성으로 추가해도 동작 없음. ROADMAP Phase 3 Step 9 자리. `modules/actuator-extras` 는 v0.1 (`/actuator/hikari`) — 단, 어느 service 에도 아직 의존성으로 적용하지 않음 |
 
 **상태 — OK** (학습 레포의 단순 단일 버전 + 환경 구분 명시 + catalog 표준).
 

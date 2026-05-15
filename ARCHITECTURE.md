@@ -84,14 +84,14 @@ choreography (안무) 는 어느 한 서비스가 흐름을 지휘하지 않고,
 
 ## 자체 운영 라이브러리 (Phase 3, `modules/`)
 
-운영 노하우를 작은 Spring Boot starter들로 떼어내 모든 서비스에 의존성으로 추가합니다. 3개 구현 완료 (services/* 가 composite build 로 직접 사용), 2개는 설계 단계.
+운영 노하우를 작은 Spring Boot starter들로 떼어내 모든 서비스에 의존성으로 추가합니다. 4개 v0.1 동작 (그중 3개는 services/* 가 composite build 로 직접 사용), 1개는 설계 단계.
 
 | 모듈 | 상태 | 역할 |
 |---|---|---|
 | `slow-query-detector` | ✅ v0.1 (order-service 적용) | JPA/JDBC 슬로우·N+1 자동 감지 → 메트릭/로그 (ADR-012) |
 | `jfr-recorder-starter` | ✅ v0.1 (order-service 적용) | JFR continuous profiling 상시 가동 + chunk 원격 업로드 (ADR-015 / ADR-018 / ADR-024) |
 | `correlation-mdc-starter` | ✅ v0.1 (Servlet 한정) | OTel Span → SLF4J MDC `trace_id` / `span_id` 자동 동기화 (ADR-025) |
-| `actuator-extras` | 📝 설계 | HikariCP / 스레드풀 / 트랜잭션 통계 커스텀 endpoint |
+| `actuator-extras` | ✅ v0.1 (HikariCP 한정) | HikariCP 풀 스냅샷 endpoint (`/actuator/hikari`) — 스레드풀/트랜잭션 endpoint 는 후속 |
 | `chaos-injector` | 📝 설계 | 메서드 단위 지연/실패 주입 (테스트·데모용) |
 
 ---
