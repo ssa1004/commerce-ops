@@ -1,5 +1,10 @@
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
 plugins {
 	java
+	kotlin("jvm") version "2.1.0"
+	kotlin("plugin.spring") version "2.1.0"
+	kotlin("plugin.jpa") version "2.1.0"
 	id("org.springframework.boot") version "3.5.14"
 	id("io.spring.dependency-management") version "1.1.7"
 }
@@ -12,6 +17,10 @@ java {
 	toolchain {
 		languageVersion = JavaLanguageVersion.of(21)
 	}
+}
+
+kotlin {
+	jvmToolchain(21)
 }
 
 repositories {
@@ -28,6 +37,11 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-web")
 	implementation("org.flywaydb:flyway-core")
 	implementation("org.flywaydb:flyway-database-postgresql")
+
+	// Kotlin 표준 + Jackson Kotlin 모듈 (record→data class 마이그레이션 후 JSON 직렬화 호환).
+	implementation("org.jetbrains.kotlin:kotlin-stdlib")
+	implementation("org.jetbrains.kotlin:kotlin-reflect")
+	implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
 
 	// Micrometer Prometheus exporter -> /actuator/prometheus
 	implementation("io.micrometer:micrometer-registry-prometheus")
@@ -68,6 +82,14 @@ dependencyManagement {
 	imports {
 		mavenBom("org.testcontainers:testcontainers-bom:${property("testcontainersVersion")}")
 		mavenBom("io.opentelemetry.instrumentation:opentelemetry-instrumentation-bom-alpha:${property("otelInstrumentationVersion")}-alpha")
+	}
+}
+
+// Kotlin 컴파일 — JVM 21 target + Spring 호환 default args (null-safety annotations 일관).
+tasks.withType<KotlinCompile> {
+	compilerOptions {
+		jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+		freeCompilerArgs.add("-Xjsr305=strict")
 	}
 }
 
