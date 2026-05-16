@@ -75,13 +75,13 @@ class Payment protected constructor() {
     var completedAt: Instant? = null
         private set
 
-    fun markSuccess(externalRef: String) {
+    fun markSuccess(externalRef: String?) {
         this.status = PaymentStatus.SUCCESS
         this.externalRef = externalRef
         this.completedAt = Instant.now()
     }
 
-    fun markFailed(reason: String) {
+    fun markFailed(reason: String?) {
         this.status = PaymentStatus.FAILED
         this.failureReason = reason
         this.completedAt = Instant.now()
