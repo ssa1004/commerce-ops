@@ -1,0 +1,335 @@
+{
+  "title": "Portfolio Load (k6 + actuator)",
+  "uid": "portfolio-load",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-30m", "to": "now" },
+  "tags": ["k6", "load", "portfolio", "actuator"],
+  "description": "8 portfolio service 의 k6 부하 시나리오 (Prometheus remote-write) + commerce-ops 서버 actuator 메트릭을 같은 시간축으로 plot. 메마이닝 엔진 advisory lock / Outbox lag / Saga 보상 / token 발급 / tenant leak / queue depth invariant 을 한 화면에서.",
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "service (k6)",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(k6_vus, service)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      },
+      {
+        "name": "scenario",
+        "label": "scenario (k6)",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(k6_vus{service=~\"$service\"}, scenario)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      },
+      {
+        "name": "actuator",
+        "label": "actuator application",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(process_cpu_usage, application)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 100,
+      "type": "row",
+      "title": "k6 조감 지표",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "VUs (활성 가상 사용자) by service/scenario",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "sum by (service, scenario) (k6_vus{service=~\"$service\", scenario=~\"$scenario\"})",
+          "legendFormat": "{{service}} / {{scenario}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "HTTP request rate (req/s) by service/scenario",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "sum by (service, scenario) (rate(k6_http_reqs_total{service=~\"$service\", scenario=~\"$scenario\"}[1m]))",
+          "legendFormat": "{{service}} / {{scenario}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "HTTP req_duration p95",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "max by (service, scenario) (k6_http_req_duration{quantile=\"0.95\", service=~\"$service\", scenario=~\"$scenario\"})",
+          "legendFormat": "p95 {{service}} / {{scenario}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "HTTP req_duration p99",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "max by (service, scenario) (k6_http_req_duration{quantile=\"0.99\", service=~\"$service\", scenario=~\"$scenario\"})",
+          "legendFormat": "p99 {{service}} / {{scenario}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "HTTP req_failed rate",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 15 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "sum by (service, scenario) (rate(k6_http_req_failed_total{service=~\"$service\", scenario=~\"$scenario\"}[1m])) / clamp_min(sum by (service, scenario) (rate(k6_http_reqs_total{service=~\"$service\", scenario=~\"$scenario\"}[1m])), 0.001)",
+          "legendFormat": "{{service}} / {{scenario}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "iteration_duration p95 (sleep 포함)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 15 },
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "max by (service, scenario) (k6_iteration_duration{quantile=\"0.95\", service=~\"$service\", scenario=~\"$scenario\"})",
+          "legendFormat": "{{service}} / {{scenario}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "WebSocket 메세지 send/recv (realtime-feed / notification)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 15 },
+      "fieldConfig": { "defaults": { "unit": "mps" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "sum by (service, scenario) (rate(k6_ws_msgs_sent_total{service=~\"$service\", scenario=~\"$scenario\"}[1m]))",
+          "legendFormat": "sent {{service}} / {{scenario}}"
+        },
+        {
+          "expr": "sum by (service, scenario) (rate(k6_ws_msgs_received_total{service=~\"$service\", scenario=~\"$scenario\"}[1m]))",
+          "legendFormat": "recv {{service}} / {{scenario}}"
+        }
+      ]
+    },
+    {
+      "id": 200,
+      "type": "row",
+      "title": "서시시오 invariant (custom metric)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 },
+      "collapsed": false
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "매칭 엔진 matched_count (resell-orderbook)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "expr": "sum by (scenario) (rate(k6_matched_count_total{service=\"resell-orderbook\", scenario=~\"$scenario\"}[1m]))", "legendFormat": "matched/s {{scenario}}" }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "OAuth2 token_issued / introspect (auth-service)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "targets": [
+        { "expr": "sum by (scenario) (rate(k6_token_issued_total{service=\"auth-service\", scenario=~\"$scenario\"}[1m]))", "legendFormat": "issued/s {{scenario}}" },
+        { "expr": "sum by (scenario) (rate(k6_token_introspect_total{service=\"auth-service\", scenario=~\"$scenario\"}[1m]))", "legendFormat": "introspect/s {{scenario}}" }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "tenant_leak_count (security-log-search) — 0 이 아니면 SIEM 격리 위반",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "targets": [
+        { "expr": "sum by (scenario) (increase(k6_tenant_leak_count_total{service=\"security-log-search\", scenario=~\"$scenario\"}[5m]))", "legendFormat": "leak/5m {{scenario}}" }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "GPU queue depth invariant (gpu-job-orchestrator)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 29 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "expr": "max by (scenario) (k6_queue_depth_observed{service=\"gpu-job-orchestrator\", scenario=~\"$scenario\"})", "legendFormat": "observed {{scenario}}" },
+        { "expr": "max by (scenario) (k6_queue_depth_invariant_delta{service=\"gpu-job-orchestrator\", scenario=~\"$scenario\"})", "legendFormat": "delta {{scenario}}" }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "billing advisory lock wait / invoice issued (billing-platform)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 29 },
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] },
+      "targets": [
+        { "expr": "max by (scenario) (k6_invoice_lock_wait_ms{quantile=\"0.95\", service=\"billing-platform\", scenario=~\"$scenario\"})", "legendFormat": "lock wait p95 {{scenario}}" },
+        { "expr": "sum by (scenario) (rate(k6_invoice_issued_total{service=\"billing-platform\", scenario=~\"$scenario\"}[1m]))", "legendFormat": "issued/s {{scenario}}" }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "notification rate-limit hit / channel fan-out (notification-hub)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 29 },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "targets": [
+        { "expr": "sum by (scenario) (rate(k6_notify_ratelimit_hits_total{service=\"notification-hub\", scenario=~\"$scenario\"}[1m]))", "legendFormat": "ratelimit/s {{scenario}}" },
+        { "expr": "sum by (scenario, channel) (rate(k6_notify_fanout_total{service=\"notification-hub\", scenario=~\"$scenario\"}[1m]))", "legendFormat": "fanout/s {{scenario}}/{{channel}}" }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "search cache hit ratio (search-service)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 35 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [
+        { "expr": "avg by (scenario) (k6_search_cache_hit_ratio{service=\"search-service\", scenario=~\"$scenario\"})", "legendFormat": "cache hit {{scenario}}" }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "feed backpressure drop ratio (realtime-feed-service)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 35 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [
+        { "expr": "avg by (scenario) (k6_ws_bp_drop_ratio{service=\"realtime-feed-service\", scenario=~\"$scenario\"})", "legendFormat": "drop {{scenario}}" }
+      ]
+    },
+    {
+      "id": 300,
+      "type": "row",
+      "title": "서버 actuator (같은 시간 윈도우)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 41 },
+      "collapsed": false
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "HikariCP active connections",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 42 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "expr": "max by (application, pool) (hikaricp_connections_active{application=~\"$actuator\"})", "legendFormat": "{{application}} / {{pool}}" }
+      ]
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "outbox unpublished (commerce-ops + portfolio)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 42 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "expr": "max by (application) (outbox_unpublished{application=~\"$actuator\"})", "legendFormat": "{{application}}" },
+        { "expr": "max by (application) (outbox_lag_seconds{application=~\"$actuator\"})", "legendFormat": "lag(s) {{application}}", "hide": false }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "Saga 보상 실행 수 / sec",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 42 },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "targets": [
+        { "expr": "sum by (application, saga) (rate(saga_compensation_total{application=~\"$actuator\"}[1m]))", "legendFormat": "{{application}} / {{saga}}" }
+      ]
+    },
+    {
+      "id": 23,
+      "type": "timeseries",
+      "title": "process CPU usage",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 48 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [
+        { "expr": "max by (application) (process_cpu_usage{application=~\"$actuator\"})", "legendFormat": "{{application}}" }
+      ]
+    },
+    {
+      "id": 24,
+      "type": "timeseries",
+      "title": "JVM heap used",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 48 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [
+        { "expr": "sum by (application) (jvm_memory_used_bytes{area=\"heap\", application=~\"$actuator\"})", "legendFormat": "{{application}}" }
+      ]
+    },
+    {
+      "id": 25,
+      "type": "timeseries",
+      "title": "Server HTTP p95 (actuator http_server_requests)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 48 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, application, uri) (rate(http_server_requests_seconds_bucket{application=~\"$actuator\"}[5m])))",
+          "legendFormat": "p95 {{application}} {{uri}}"
+        }
+      ]
+    }
+  ]
+}

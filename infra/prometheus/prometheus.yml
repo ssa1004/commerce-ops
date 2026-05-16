@@ -1,6 +1,9 @@
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
+  # k6 remote-write 시 default label 로 환경 식별. cross-env 비교가 쉬워진다.
+  external_labels:
+    cluster: commerce-ops-local
 
 rule_files:
   - /etc/prometheus/alerts.yml
@@ -9,6 +12,19 @@ alerting:
   alertmanagers:
     - static_configs:
         - targets: ["alertmanager:9093"]
+
+# Remote-write receiver 는 docker-compose 의 `--web.enable-remote-write-receiver`
+# (또는 `--enable-feature=otlp-write-receiver`) 로 켠다. Helm chart 도 동일 플래그.
+# k6 의 `--out experimental-prometheus-rw=http://prometheus:9090/api/v1/write`
+# (또는 host 측에서 `http://localhost:9090/api/v1/write`) 가 이 receiver 로 들어와
+# `portfolio-load.json` 대시보드의 k6_* 메트릭으로 plot 된다.
+#
+# k6 publish 시 default label 은 다음과 같다 (override 가능):
+#   - testid          — k6 가 자동으로 부여하거나 `--tag testid=...` 로 명시
+#   - service / scenario — 본 portfolio 에서는 각 service 의 run-load.sh 가
+#                         `K6_PROMETHEUS_RW_PUSH_INTERVAL` / `K6_PROMETHEUS_RW_TREND_STATS`
+#                         + `--tag service=auth-service --tag scenario=token-issue` 형태로 부여.
+# 대시보드는 `service` / `scenario` 변수를 통해 필터링한다.
 
 scrape_configs:
   - job_name: prometheus
