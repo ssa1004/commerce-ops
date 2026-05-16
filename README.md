@@ -208,9 +208,34 @@ curl -i -X POST localhost:8081/orders \
 
 ### 4. 부하 테스트 (선택)
 
+commerce-ops 자체 시나리오 (단일 서비스):
+
 ```bash
 k6 run load/baseline.js
 ```
+
+**portfolio 8 서비스 (k6 → Prometheus remote-write → 통합 대시보드):**
+
+```bash
+# commerce-ops 의 Prometheus 는 이미 remote-write receiver 가 켜져 있다
+# (docker-compose.yml 의 --web.enable-remote-write-receiver).
+# 각 portfolio service 의 run-load.sh 에 한 env 만 주입하면 끝:
+
+export K6_PROMETHEUS_RW_SERVER_URL=http://localhost:9090/api/v1/write
+
+# 예) auth-service
+cd /path/to/auth-service && ./scripts/run-load.sh
+
+# 예) resell-orderbook
+cd /path/to/resell-orderbook && ./scripts/run-load.sh
+```
+
+각 service 가 `service=<name>` / `scenario=<scenario>` tag 를 자동 부여해서 같은
+Prometheus 로 흘려보낸다. Grafana 의 **Portfolio Load (k6 + actuator)** 대시보드 (uid
+`portfolio-load`) 에서 `service` / `scenario` 변수로 필터하면 8 service 시나리오의
+k6 client metric (vus / http p95p99 / ws msgs / custom invariant) 과 commerce-ops
+server actuator metric (Hikari active / outbox lag / Saga 보상 / process CPU) 이 같은
+시간축에 plot 된다. 필요 k6 버전: **0.42+** (experimental-prometheus-rw output).
 
 ### 5. Grafana에서 메트릭 → 로그 → 트레이스 점프
 
