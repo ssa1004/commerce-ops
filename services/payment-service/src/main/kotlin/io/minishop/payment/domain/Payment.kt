@@ -100,7 +100,7 @@ class Payment protected constructor() {
 
     companion object {
         @JvmStatic
-        fun pending(orderId: Long, userId: Long, amount: BigDecimal): Payment {
+        fun pending(orderId: Long?, userId: Long?, amount: BigDecimal?): Payment {
             val p = Payment()
             p.orderId = orderId
             p.userId = userId
