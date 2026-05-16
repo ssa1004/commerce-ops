@@ -48,7 +48,7 @@ dependencies {
 	implementation("io.micrometer:micrometer-registry-prometheus")
 
 	// Redisson for distributed locks (auto-configures from spring.data.redis.*)
-	implementation("org.redisson:redisson-spring-boot-starter:3.31.0")
+	implementation("org.redisson:redisson-spring-boot-starter:4.4.0")
 
 	implementation("io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter")
 	implementation("io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0")
