@@ -1,5 +1,8 @@
 plugins {
 	java
+	kotlin("jvm") version "2.1.0"
+	kotlin("plugin.spring") version "2.1.0"
+	kotlin("plugin.jpa") version "2.1.0"
 	id("org.springframework.boot") version "3.5.14"
 	id("io.spring.dependency-management") version "1.1.7"
 }
@@ -11,6 +14,15 @@ description = "Payment service"
 java {
 	toolchain {
 		languageVersion = JavaLanguageVersion.of(21)
+	}
+}
+
+kotlin {
+	jvmToolchain(21)
+	compilerOptions {
+		// null-safety 엄격 — JSR-305 (@Nullable 등) 어노테이션을 strict 로 해석
+		freeCompilerArgs.addAll("-Xjsr305=strict")
+		jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
 	}
 }
 
@@ -35,6 +47,11 @@ dependencies {
 	implementation("io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0")
 
 	implementation("org.springframework.kafka:spring-kafka")
+
+	// Kotlin runtime + reflect (Spring 의 reflection 기반 binding / DI)
+	implementation("org.jetbrains.kotlin:kotlin-reflect")
+	// Kotlin data class 직렬화 (Jackson) — record 등 record-style 매핑 호환
+	implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
 
 	runtimeOnly("org.postgresql:postgresql")
 
