@@ -30,6 +30,7 @@ import static org.awaitility.Awaitility.await;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
@@ -60,7 +61,7 @@ class OrderServiceApplicationTests {
 
 	@BeforeEach
 	void setUp() {
-		when(inventoryClient.reserve(anyLong(), anyLong(), any())).thenReturn(
+		when(inventoryClient.reserve(anyLong(), anyLong(), anyInt())).thenReturn(
 				new InventoryClient.ReservationResult(1L, 1001L, 1L, 1, "RESERVED", false)
 		);
 		when(paymentClient.charge(anyLong(), anyLong(), any())).thenReturn(
@@ -83,17 +84,17 @@ class OrderServiceApplicationTests {
 		assertThat(created.getBody().status()).isEqualTo(OrderStatus.PAID);
 		assertThat(created.getBody().totalAmount()).isEqualByComparingTo("39880.00");
 
-		verify(inventoryClient, times(2)).reserve(anyLong(), anyLong(), any());
+		verify(inventoryClient, times(2)).reserve(anyLong(), anyLong(), anyInt());
 		verify(paymentClient, times(1)).charge(anyLong(), anyLong(), any());
 		verify(inventoryClient, never()).release(anyLong(), anyLong());
 	}
 
 	@Test
 	void outOfStock_compensatesAndReturns409() {
-		when(inventoryClient.reserve(eq(1001L), anyLong(), any())).thenReturn(
+		when(inventoryClient.reserve(eq(1001L), anyLong(), anyInt())).thenReturn(
 				new InventoryClient.ReservationResult(1L, 1001L, 1L, 1, "RESERVED", false)
 		);
-		when(inventoryClient.reserve(eq(1002L), anyLong(), any())).thenThrow(
+		when(inventoryClient.reserve(eq(1002L), anyLong(), anyInt())).thenThrow(
 				new InventoryClient.OutOfStockException("product 1002 out of stock")
 		);
 
