@@ -350,11 +350,23 @@ ExternalSecret / SealedSecret 으로 미리 만들어 둔 Secret 을 `extraEnvFr
 5. [docs/runbook/](docs/runbook/) — 알람이 떴을 때의 대응 절차
 
 서비스/인프라 코드를 보려면 각 디렉토리의 README:
-- [services/order-service/README.md](services/order-service/README.md) — SAGA orchestration (한 서비스가 흐름을 직접 지휘하며 실패 시 보상까지 책임지는 방식) + Outbox
-- [services/inventory-service/README.md](services/inventory-service/README.md) — Redisson 분산락 (여러 인스턴스가 같은 자원에 동시 접근 못 하게 Redis로 잠그는 도구) + 멱등성 (같은 요청이 두 번 와도 결과가 한 번 처리한 것과 같음)
-- [services/payment-service/README.md](services/payment-service/README.md) — mock PG (외부 결제사를 흉내 내는 가짜 서버) + afterCommit publish (DB 트랜잭션이 커밋 완료된 직후에 이벤트 발행)
+- [services/order-service/README.md](services/order-service/README.md) — SAGA orchestration (한 서비스가 흐름을 직접 지휘하며 실패 시 보상까지 책임지는 방식) + Outbox + **DLQ admin REST API** (`byOrder` / `byCustomer` 차원, SAGA / OUTBOX replay 의 멱등성)
+- [services/inventory-service/README.md](services/inventory-service/README.md) — Redisson 분산락 (여러 인스턴스가 같은 자원에 동시 접근 못 하게 Redis로 잠그는 도구) + 멱등성 (같은 요청이 두 번 와도 결과가 한 번 처리한 것과 같음) + **DLQ admin REST API** (`byProduct` / `bySku` 차원, replay 시 **분산락 재획득**)
+- [services/payment-service/README.md](services/payment-service/README.md) — mock PG (외부 결제사를 흉내 내는 가짜 서버) + afterCommit publish (DB 트랜잭션이 커밋 완료된 직후에 이벤트 발행) + **DLQ admin REST API** (`byCustomer` 차원, replay 시 **PG `Idempotency-Key` 헤더 복사**)
 - [infra/README.md](infra/README.md) — 옵저버빌리티 스택 운영 가이드
 - [modules/README.md](modules/README.md) — Phase 3 자체 라이브러리 설계
+
+### DLQ admin REST API — 3 service 공통 표준 v2 (ADR-026)
+
+3 service 모두에 `/api/v1/admin/dlq/...` 8 endpoint 가 *같은 모양* 으로 노출. notification-hub (ADR-0015) / billing-platform (ADR-0033) / bid-ask-marketplace (ADR-0028) / gpu-job-orchestrator (ADR-0026) 의 검증된 표준을 commerce-ops 에 확산. 상세는 [docs/decision-log.md ADR-026](docs/decision-log.md). service 별 운영 curl 예시는 각 service README 의 *DLQ admin REST API* 절.
+
+| service | port | `DlqSource` | stats 차원 | replay 특유 |
+|---|---|---|---|---|
+| order | 8081 | `ORDER_EVENT` / `INVENTORY_INBOX` / `PAYMENT_INBOX` / `SAGA` / `OUTBOX` | `byOrder` / `byCustomer` | SAGA / OUTBOX 의 attempts 회계 (ADR-023), inbox dedup skip |
+| payment | 8082 | `PAYMENT_CHARGE` / `PAYMENT_REFUND` / `PG_CALLBACK` / `OUTBOX` | `byCustomer` | PG `Idempotency-Key` 헤더 복사, `PAYMENT_REFUND` 액션은 audit `risk=high` |
+| inventory | 8083 | `RESERVE_FAILED` / `RELEASE_FAILED` / `KAFKA_CONSUME` / `OUTBOX` | `byProduct` / `bySku` | Redisson 분산락 재획득 (timeout 시 `lockAcquired=false` + `LOCK_TIMEOUT`) |
+
+공통 안전: `X-Admin-Role` 헤더, `X-Actor` audit, bulk `source` 필수 + `confirm=false` → dry-run 강제, `bulk-discard` hard DELETE 차단, rate limit (`dlq.read=60 / write=30 / bulk=5` per minute), audit `DLQ_REPLAY` / `DLQ_DISCARD` / `DLQ_BULK_*` (Loki `audit="true"`).
 
 ---
 
