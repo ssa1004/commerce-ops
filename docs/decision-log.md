@@ -409,3 +409,26 @@
   2. **Logback 의 `MDCInsertingServletFilter` 같은 외부 필터** — Spring Boot 가 자동등록해주지 않고, 매 서비스에서 명시 등록 필요. starter 의 핵심 가치 (의존성 추가만으로 자동) 를 깬다.
   3. **WebFilter 까지 한 번에** — WebFlux 분기는 Reactor Context 전파가 별도 (`ContextRegistry` + `Hooks.enableAutomaticContextPropagation()` 시점 결정 등) 라 *최소 동작* 의 검증 영역이 너무 넓어진다. v0.1 은 가장 단순한 Servlet 한정으로 시작 — placeholder 면제의 목표는 *동작하는 코드가 0 → 1* 이지 완전한 기능 매트릭스가 아님.
 - **결과**: Servlet 환경의 Loki ↔ Tempo 점프가 의존성 추가만으로 동작. CI 매트릭스 (`.github/workflows/ci.yml`) 에 `correlation-mdc-starter` 추가 — 빌드 회귀가 즉시 빨간불. 후속 작업: WebFlux (`WebFilter` + Reactor Context 전파), Kafka consumer `RecordInterceptor` (헤더의 traceparent → MDC), 비즈니스 attribute (X-User-Id 등 + ADR-013 의 PII 마스킹 통합), order-service `OutboxPoller` 의 `MDC.put("outboxRunId", ...)` 임시 처방을 본 starter 로 흡수.
+
+## ADR-026 — DLQ admin REST API 표준 v2 (3 service 확산)
+
+- **결정**: order / payment / inventory 3 service 에 *동일* 8 endpoint 의 DLQ admin REST API (`/api/v1/admin/dlq/...`) 를 노출. 표준은 `DlqMessage` / `DlqSource` enum / 6 종 DTO / 4 종 port (`DlqUseCase` / `AdminRateLimiter` / `DlqMessageRepository` / `DlqBulkJobRepository` / `DlqAuditLog`) / 2 종 Service (`DlqAdminService` / `DlqBulkJobService`) 모양으로 *복붙 가능한 골격*. 100% Kotlin.
+- **배경**: notification-hub (ADR-0015) / billing-platform (ADR-0033) / bid-ask-marketplace (ADR-0028) / gpu-job-orchestrator (ADR-0026) 4 레포에서 검증된 표준. commerce-ops 의 3 service 가 마지막 확산 — 다음 두 가지 회귀를 막는다:
+  1. 사고 대응에서 *서로 다른 모양* 의 콘솔을 익히는 비용 — 새 운영자가 notification 의 콘솔로 익히고 commerce-ops 의 콘솔에서 매번 다시 학습.
+  2. bulk 의 *오발사* — 한 곳은 `confirm=true` 가 기본, 다른 곳은 dry-run 강제, 또 다른 곳은 `confirm` 없음. 한 사고에서 잘못된 bulk-discard 가 영구 데이터를 지운 후 격상.
+- **service 특유 차이 (의도된 확장점)**:
+  - **order**: `DlqSource` = `ORDER_EVENT / INVENTORY_INBOX / PAYMENT_INBOX / SAGA / OUTBOX`. stats 차원 `byOrder` / `byCustomer`. SAGA / OUTBOX replay 는 [ADR-023](#adr-023--outbox-poller-의-모든-실패-경로는-동일한-attempts-회계-handlefailure-를-거친다) 의 `handleFailure` attempts 회계를 그대로 활용 (이미 fix 된 `8649329` outbox 정합성).
+  - **payment**: `DlqSource` = `PAYMENT_CHARGE / PAYMENT_REFUND / PG_CALLBACK / OUTBOX`. stats 차원 `byCustomer`. PG 호출 멱등성 — `Idempotency-Key` 헤더를 replay 시 그대로 복사 (billing 패턴). mock PG fail 시 DLQ 분류.
+  - **inventory**: `DlqSource` = `RESERVE_FAILED / RELEASE_FAILED / KAFKA_CONSUME / OUTBOX`. stats 차원 `byProduct` (또는 `bySku`). Redisson 분산락 충돌로 DLQ 격리된 메시지의 replay 시 분산락 *재획득* (락 없이 재처리하면 동시성 사고 — 본 ADR 의 가장 큰 service-specific 변형).
+- **공통 안전 (4 service 검증 합집합)**:
+  - `bulk-*` 는 `source` 필수 — blast radius 를 source 단위로 격리 (market ADR-0028 회고).
+  - `bulk-*` 는 `confirm=false` 가 *항상* dry-run — 결과는 실 실행과 *같은 모양* 으로 응답 (notification ADR-0015 의 "dry-run 결과가 실 실행과 모양이 달라 reviewer 가 실수했다" 회고).
+  - `bulk-discard` 는 hard DELETE 차단 — soft delete + retention. 데이터 복구 가능 윈도우를 강제.
+  - rate limit `admin:dlq:<ip>` scope=`dlq.read|write|bulk` — bulk 만 분당 5 (read=60, write=30). 초과 시 `429` + `Retry-After`.
+  - audit (`DLQ_REPLAY` / `DLQ_DISCARD` / `DLQ_BULK_*`) — actor / target / reason / 결과 / 도메인 키 (orderId / paymentId / productId). Loki MDC `audit="true"` 한 줄.
+  - 인증 — 현재 commerce-ops 미도입 단계의 1차 게이트는 `X-Admin-Role` 헤더 (`DLQ_ADMIN` / `PLATFORM_ADMIN`). 운영 단계에서 Spring Security `@PreAuthorize` 로 교체. 헤더 우회는 ingress ACL 로 막는다.
+- **대안**:
+  1. **service 별 자유 모양** — 단기 구현 빠르지만, 운영 콘솔이 service 마다 다른 DTO 를 그리는 비용 + 사고 대응의 인지 부하. 위 4 레포 검증의 출발점이 이 안의 회고.
+  2. **별도 admin-gateway 한 곳에 집중** — 콘솔에선 좋지만 service 가 자기 DLQ 의 *후처리* (order 의 saga / inbox dedup, payment 의 PG 멱등, inventory 의 분산락 재획득) 를 모르는 게이트웨이가 결정하면 잘못된 액션을 보냄. 표준 모양 + service 내부 use case 의 결합이 안전.
+  3. **콘솔만 통일하고 API 는 그대로** — 운영자 1 명 시점에선 가능하지만 SRE 가 2 명 이상이면 직접 curl / kubectl exec 로 다루는 일이 잦다. API 자체의 표준화가 그 잦은 도구의 비용을 낮춘다.
+- **결과**: 8 endpoint × 3 service × 같은 모양. 콘솔이 8 종 클라이언트 코드를 1 종으로 줄임. 후속 step: 실제 source-specific 어댑터 (Kafka admin / outbox FAILED rows / saga error log) wiring → 현재는 in-memory port 로 *API 모양만* 보장. Redis Lua rate limiter + Redis Hash bulk job 저장소로 단일 인스턴스 fallback 을 교체 (port 만 같으면 service 코드는 변경 없음).

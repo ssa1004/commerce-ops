@@ -104,3 +104,74 @@ cd ../inventory-service && ./gradlew bootRun
 - **멱등성 위임**: 같은 orderId 로 재시도해도 inventory-service 의 `(orderId, productId)` 멱등성 덕분에 재고가 두 번 차감되지 않음.
 - **timeout 단조 감소**: 호출 체인의 timeout 은 호출자 ≥ 피호출자 가 되도록 설정. 같거나 호출자가 더 짧으면 in-doubt 윈도우가 자주 발생 (case-studies/2026-05-07-payment-timeout-race 참조).
 - **5xx 와 비즈니스 실패 분리**: 4xx (409/402) 는 의도된 비즈니스 결과 (재고 없음·결제 거절은 시스템 장애 아님). k6 임계값도 `5xx` 만 SLO 위반으로 카운트.
+
+## DLQ admin REST API
+
+DLQ (Dead Letter Queue — 처리 실패 메시지가 격리되는 별도 토픽/저장소) 관리 콘솔의 백엔드. notification-hub ADR-0015 / billing-platform ADR-0033 / bid-ask-marketplace ADR-0028 / gpu-job-orchestrator ADR-0026 의 표준을 commerce-ops 3 서비스에 확산. order-service 특유는 `DlqSource` 5 종 (`ORDER_EVENT / INVENTORY_INBOX / PAYMENT_INBOX / SAGA / OUTBOX`) 과 `byOrder` / `byCustomer` 통계 차원, 그리고 SAGA / OUTBOX replay 의 멱등성 (ADR-023 의 handleFailure 회계 활용).
+
+| Method | Path | scope |
+|---|---|---|
+| GET | `/api/v1/admin/dlq?source=&topic=&from=&to=&errorType=&cursor=&size=` | `dlq.read` |
+| GET | `/api/v1/admin/dlq/{messageId}` | `dlq.read` |
+| POST | `/api/v1/admin/dlq/{messageId}/replay` (`X-Idempotency-Key`) | `dlq.write` |
+| POST | `/api/v1/admin/dlq/{messageId}/discard` (`{reason}`) | `dlq.write` |
+| POST | `/api/v1/admin/dlq/bulk-replay` (`source` 필수, `confirm=false` → dry-run 강제) | `dlq.bulk` |
+| POST | `/api/v1/admin/dlq/bulk-discard` (`source` + `reason` 필수, dry-run 강제) | `dlq.bulk` |
+| GET | `/api/v1/admin/dlq/bulk-jobs/{jobId}` | `dlq.read` |
+| GET | `/api/v1/admin/dlq/stats?from=&to=&bucket=PT1H` | `dlq.read` |
+
+권한 / 안전:
+- 모든 호출은 `X-Admin-Role: DLQ_ADMIN` (또는 `PLATFORM_ADMIN`) 헤더 필요 — 별도 admin auth 미도입 단계의 1차 게이트.
+- `X-Actor: <user>` 로 audit 로그의 actor 기록. 누락 시 `anonymous`.
+- rate limit: `admin:dlq:<ip>` 키로 scope 별 분당 한도 (`read=60` / `write=30` / `bulk=5`). 초과 시 `429 Too Many Requests` + `Retry-After` 헤더.
+- `bulk-*` 는 `source` 필수 — 한 번에 한 source 만 처리해 blast radius 를 좁힌다 (market ADR-0028 패턴).
+- `bulk-discard` 는 hard DELETE 차단 — soft delete + retention.
+- audit 액션: `DLQ_REPLAY` / `DLQ_DISCARD` / `DLQ_BULK_REPLAY[_DRYRUN]` / `DLQ_BULK_DISCARD[_DRYRUN]` — Loki 의 `{audit="true"} | json` 으로 한 번에 추출.
+
+운영 curl 예시:
+
+```bash
+BASE=http://localhost:8081/api/v1/admin/dlq
+
+# 1) 최근 SAGA 실패 20 건 조회
+curl -s -H "X-Admin-Role: DLQ_ADMIN" -H "X-Actor: alice" \
+  "$BASE?source=SAGA&size=20"
+
+# 2) 단건 상세
+curl -s -H "X-Admin-Role: DLQ_ADMIN" "$BASE/<messageId>"
+
+# 3) 단건 replay (idempotency)
+curl -s -X POST \
+  -H "X-Admin-Role: DLQ_ADMIN" -H "X-Actor: alice" \
+  -H "X-Idempotency-Key: $(uuidgen)" \
+  "$BASE/<messageId>/replay"
+
+# 4) 단건 discard (reason 필수)
+curl -s -X POST \
+  -H "X-Admin-Role: DLQ_ADMIN" -H "X-Actor: alice" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"duplicate event from chaos run"}' \
+  "$BASE/<messageId>/discard"
+
+# 5) bulk-replay DRY-RUN (영향 범위만 산정 — confirm=false 가 기본)
+curl -s -X POST \
+  -H "X-Admin-Role: DLQ_ADMIN" -H "X-Actor: alice" \
+  -H "Content-Type: application/json" \
+  -d '{"source":"ORDER_EVENT","errorType":"KAFKA_SEND_TIMEOUT","maxMessages":500}' \
+  "$BASE/bulk-replay"
+
+# 6) bulk-replay 실행 (confirm=true)
+curl -s -X POST \
+  -H "X-Admin-Role: DLQ_ADMIN" -H "X-Actor: alice" \
+  -H "Content-Type: application/json" \
+  -d '{"source":"ORDER_EVENT","confirm":true,"reason":"after broker recovery"}' \
+  "$BASE/bulk-replay"
+
+# 7) bulk job 폴링
+curl -s -H "X-Admin-Role: DLQ_ADMIN" "$BASE/bulk-jobs/<jobId>"
+
+# 8) 통계 (byOrder / byCustomer 차원 포함)
+curl -s -H "X-Admin-Role: DLQ_ADMIN" \
+  "$BASE/stats?from=2026-05-17T00:00:00Z&to=2026-05-18T00:00:00Z&bucket=PT1H"
+```
+
