@@ -84,3 +84,62 @@ MOCK_PG_FAILURE_RATE=1.0 ./gradlew bootRun
 - [x] Micrometer Prometheus 노출
 - [x] Testcontainers 통합 테스트 + mock-pg 단위 테스트
 - [x] Prometheus scrape 활성화 (8082)
+
+## DLQ admin REST API
+
+DLQ 관리 콘솔의 백엔드 8 endpoint. 표준은 ADR-026 (DLQ admin REST API 표준 v2).
+notification-hub / billing-platform / bid-ask-marketplace / gpu-job-orchestrator 의 검증된 모양.
+
+payment 특유:
+- `DlqSource` = `PAYMENT_CHARGE / PAYMENT_REFUND / PG_CALLBACK / OUTBOX`
+- stats 차원 `byCustomer`
+- **replay 시 PG 의 `Idempotency-Key` 헤더를 그대로 복사** (billing 패턴) — 두 번 차감 차단.
+  응답의 `idempotencyKey` 필드에 사용한 키를 노출해 PG audit 매칭 가능.
+- `PAYMENT_REFUND` 액션은 audit 로그에 `risk=high` 표식 (돈 *돌려주는* 동작이라 reviewer 가 더 신중하게 판단).
+
+| Method | Path | scope |
+|---|---|---|
+| GET | `/api/v1/admin/dlq` | `dlq.read` |
+| GET | `/api/v1/admin/dlq/{messageId}` | `dlq.read` |
+| POST | `/api/v1/admin/dlq/{messageId}/replay` (`X-Idempotency-Key`) | `dlq.write` |
+| POST | `/api/v1/admin/dlq/{messageId}/discard` (`{reason}`) | `dlq.write` |
+| POST | `/api/v1/admin/dlq/bulk-replay` (`source` 필수, dry-run 강제) | `dlq.bulk` |
+| POST | `/api/v1/admin/dlq/bulk-discard` (`source`+`reason` 필수, dry-run 강제) | `dlq.bulk` |
+| GET | `/api/v1/admin/dlq/bulk-jobs/{jobId}` | `dlq.read` |
+| GET | `/api/v1/admin/dlq/stats?from=&to=&bucket=PT1H` | `dlq.read` |
+
+권한 / 안전 (ADR-026 공통):
+- `X-Admin-Role: DLQ_ADMIN` (또는 `PLATFORM_ADMIN`) 헤더 필요.
+- `X-Actor: <user>` 헤더로 audit actor 기록.
+- rate limit `admin:dlq:<ip>` scope 별 분당 `read=60 / write=30 / bulk=5`. 초과 시 `429 + Retry-After`.
+- `bulk-*` 는 `source` 필수, `confirm=false` 면 항상 dry-run.
+- `bulk-discard` 는 hard DELETE 차단 (soft delete + retention).
+
+운영 curl 예시:
+
+```bash
+BASE=http://localhost:8082/api/v1/admin/dlq
+
+# 1) 최근 PAYMENT_CHARGE 실패 조회
+curl -s -H "X-Admin-Role: DLQ_ADMIN" -H "X-Actor: alice" \
+  "$BASE?source=PAYMENT_CHARGE&size=20"
+
+# 2) 단건 replay — admin 의 idempotency 와 PG 의 Idempotency-Key 가 별도
+#    응답의 idempotencyKey 가 *PG 에 전달된 키* — PG audit 와 매칭용
+curl -s -X POST \
+  -H "X-Admin-Role: DLQ_ADMIN" -H "X-Actor: alice" \
+  -H "X-Idempotency-Key: $(uuidgen)" \
+  "$BASE/<messageId>/replay"
+
+# 3) bulk-replay DRY-RUN (PG charge timeout 들만)
+curl -s -X POST \
+  -H "X-Admin-Role: DLQ_ADMIN" -H "X-Actor: alice" \
+  -H "Content-Type: application/json" \
+  -d '{"source":"PAYMENT_CHARGE","errorType":"PG_TIMEOUT","maxMessages":200}' \
+  "$BASE/bulk-replay"
+
+# 4) 통계 (byCustomer 차원)
+curl -s -H "X-Admin-Role: DLQ_ADMIN" \
+  "$BASE/stats?from=2026-05-17T00:00:00Z&to=2026-05-18T00:00:00Z&bucket=PT1H"
+```
+
