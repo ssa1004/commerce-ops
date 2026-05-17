@@ -1,0 +1,180 @@
+package io.minishop.inventory.web
+
+import io.minishop.inventory.dlq.AdminRateLimiter
+import io.minishop.inventory.dlq.DlqAdminService
+import io.minishop.inventory.dlq.DlqBulkRequest
+import io.minishop.inventory.dlq.DlqDetailResponse
+import io.minishop.inventory.dlq.DlqDiscardRequest
+import io.minishop.inventory.dlq.DlqListQuery
+import io.minishop.inventory.dlq.DlqSource
+import jakarta.servlet.http.HttpServletRequest
+import jakarta.validation.Valid
+import jakarta.validation.constraints.Max
+import jakarta.validation.constraints.Min
+import org.springframework.http.HttpHeaders
+import org.springframework.http.HttpStatus
+import org.springframework.http.ResponseEntity
+import org.springframework.validation.annotation.Validated
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestHeader
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.bind.annotation.RestController
+import java.time.Duration
+import java.time.Instant
+
+/**
+ * inventory-service Admin DLQ 컨트롤러. ADR-026 표준 8 endpoint.
+ *
+ * inventory 특유 — replay 응답에 `lockAcquired` 필드. 분산락 timeout 인 경우 즉시 인지.
+ */
+@RestController
+@RequestMapping("/api/v1/admin/dlq")
+@Validated
+class AdminDlqController(
+    private val service: DlqAdminService,
+    private val rateLimiter: AdminRateLimiter,
+) {
+
+    @GetMapping
+    fun list(
+        @RequestParam(required = false) source: DlqSource?,
+        @RequestParam(required = false) topic: String?,
+        @RequestParam(required = false) from: Instant?,
+        @RequestParam(required = false) to: Instant?,
+        @RequestParam(required = false) errorType: String?,
+        @RequestParam(required = false) cursor: String?,
+        @RequestParam(required = false, defaultValue = "20") @Min(1) @Max(100) size: Int,
+        request: HttpServletRequest,
+    ): ResponseEntity<*> {
+        ensure(request, scope = "dlq.read")?.let { return it }
+        val page = service.list(DlqListQuery(source, topic, from, to, errorType, cursor, size))
+        return ResponseEntity.ok(page)
+    }
+
+    @GetMapping("/{messageId}")
+    fun get(
+        @PathVariable messageId: String,
+        request: HttpServletRequest,
+    ): ResponseEntity<*> {
+        ensure(request, scope = "dlq.read")?.let { return it }
+        val m = service.get(messageId) ?: return ResponseEntity.notFound().build<Void>()
+        return ResponseEntity.ok(
+            DlqDetailResponse(
+                messageId = m.messageId,
+                source = m.source,
+                topic = m.topic,
+                productId = m.productId,
+                sku = m.sku,
+                orderId = m.orderId,
+                errorType = m.errorType,
+                errorMessage = m.errorMessage,
+                payload = m.payload,
+                headers = m.headers,
+                firstFailedAt = m.firstFailedAt,
+                lastFailedAt = m.lastFailedAt,
+                attempts = m.attempts,
+            )
+        )
+    }
+
+    @PostMapping("/{messageId}/replay")
+    fun replay(
+        @PathVariable messageId: String,
+        @RequestHeader(name = "X-Idempotency-Key", required = false) idempotencyKey: String?,
+        @RequestHeader(name = "X-Actor", required = false) actor: String?,
+        request: HttpServletRequest,
+    ): ResponseEntity<*> {
+        ensure(request, scope = "dlq.write")?.let { return it }
+        val key = idempotencyKey ?: "auto:" + java.util.UUID.randomUUID()
+        val a = actor ?: "anonymous"
+        val response = service.replay(messageId, a, key)
+        val status = if (response.ok) HttpStatus.OK else HttpStatus.UNPROCESSABLE_ENTITY
+        return ResponseEntity.status(status).body(response)
+    }
+
+    @PostMapping("/{messageId}/discard")
+    fun discard(
+        @PathVariable messageId: String,
+        @Valid @RequestBody body: DlqDiscardRequest,
+        @RequestHeader(name = "X-Actor", required = false) actor: String?,
+        request: HttpServletRequest,
+    ): ResponseEntity<*> {
+        ensure(request, scope = "dlq.write")?.let { return it }
+        val a = actor ?: "anonymous"
+        val response = service.discard(messageId, a, body.reason)
+        val status = if (response.ok) HttpStatus.OK else HttpStatus.UNPROCESSABLE_ENTITY
+        return ResponseEntity.status(status).body(response)
+    }
+
+    @PostMapping("/bulk-replay")
+    fun bulkReplay(
+        @Valid @RequestBody body: DlqBulkRequest,
+        @RequestHeader(name = "X-Actor", required = false) actor: String?,
+        request: HttpServletRequest,
+    ): ResponseEntity<*> {
+        ensure(request, scope = "dlq.bulk")?.let { return it }
+        val response = service.bulkReplay(body, actor ?: "anonymous")
+        return ResponseEntity.accepted().body(response)
+    }
+
+    @PostMapping("/bulk-discard")
+    fun bulkDiscard(
+        @Valid @RequestBody body: DlqBulkRequest,
+        @RequestHeader(name = "X-Actor", required = false) actor: String?,
+        request: HttpServletRequest,
+    ): ResponseEntity<*> {
+        ensure(request, scope = "dlq.bulk")?.let { return it }
+        val response = service.bulkDiscard(body, actor ?: "anonymous")
+        return ResponseEntity.accepted().body(response)
+    }
+
+    @GetMapping("/bulk-jobs/{jobId}")
+    fun bulkJob(
+        @PathVariable jobId: String,
+        request: HttpServletRequest,
+    ): ResponseEntity<*> {
+        ensure(request, scope = "dlq.read")?.let { return it }
+        val job = service.bulkJob(jobId) ?: return ResponseEntity.notFound().build<Void>()
+        return ResponseEntity.ok(job)
+    }
+
+    @GetMapping("/stats")
+    fun stats(
+        @RequestParam from: Instant,
+        @RequestParam to: Instant,
+        @RequestParam(required = false, defaultValue = "PT1H") bucket: Duration,
+        request: HttpServletRequest,
+    ): ResponseEntity<*> {
+        ensure(request, scope = "dlq.read")?.let { return it }
+        return ResponseEntity.ok(service.stats(from, to, bucket))
+    }
+
+    private fun ensure(request: HttpServletRequest, scope: String): ResponseEntity<Void>? {
+        val role = request.getHeader("X-Admin-Role")
+        if (role.isNullOrBlank() || !ALLOWED_ROLES.contains(role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+        val key = "admin:dlq:" + clientIp(request)
+        return when (val decision = rateLimiter.tryAcquire(scope, key)) {
+            is AdminRateLimiter.Decision.Allowed -> null
+            is AdminRateLimiter.Decision.Throttled ->
+                ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .header(HttpHeaders.RETRY_AFTER, decision.retryAfter.toSeconds().coerceAtLeast(1).toString())
+                    .build()
+        }
+    }
+
+    private fun clientIp(request: HttpServletRequest): String {
+        val fwd = request.getHeader("X-Forwarded-For")
+        if (!fwd.isNullOrBlank()) return fwd.substringBefore(',').trim()
+        return request.remoteAddr ?: "unknown"
+    }
+
+    companion object {
+        private val ALLOWED_ROLES = setOf("DLQ_ADMIN", "PLATFORM_ADMIN")
+    }
+}
