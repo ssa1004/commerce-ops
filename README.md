@@ -30,7 +30,7 @@
 
 ## Portfolio Set 통합
 
-본 레포는 8 개 학습 레포 중 한 자리입니다. 다른 7 개는 각자 도메인 (인증, 보안 로그, 알림, 검색, 결제, 리셀 거래소, GPU 잡) 을 담고, 본 레포는 그 위에 깔리는 *운영 라이브러리 (starter)* 와 *옵저버빌리티 스택* 을 제공합니다. starter 만 가져다 쓰면 어느 레포든 자동으로 slow query / JFR / correlation MDC 가 켜집니다.
+본 레포는 10 개 학습 레포 중 한 자리입니다. 다른 9 개는 각자 도메인 (인증, 보안 로그, 알림, 검색, 결제, 리셀 거래소, 실시간 feed, GPU 잡, GraphQL 게이트웨이) 을 담고, 본 레포는 그 위에 깔리는 *운영 라이브러리 (starter)* 와 *옵저버빌리티 스택* 을 제공합니다. starter 만 가져다 쓰면 어느 레포든 자동으로 slow query / JFR / correlation MDC 가 켜집니다.
 
 | Repo | 도메인 | 본 레포와의 관계 |
 |---|---|---|
@@ -41,6 +41,8 @@
 | [billing-platform](https://github.com/ssa1004/billing-platform) | B2B 결제/청구/정산 (실시간 + 사용량 기반) | starter consumer |
 | [bid-ask-marketplace](https://github.com/ssa1004/bid-ask-marketplace) | 한정판 리셀 거래소 (ASK/BID 매칭) | starter consumer |
 | [gpu-job-orchestrator](https://github.com/ssa1004/gpu-job-orchestrator) | GPU 학습/추론 잡 오케스트레이션 (K8s Job + 콜백) | starter consumer |
+| [realtime-feed-service](https://github.com/ssa1004/realtime-feed-service) | 실시간 호가/체결 feed 스트리밍 (Kotlin + WebFlux, bid-ask-marketplace 짝) | portfolio sibling |
+| [graphql-gateway](https://github.com/ssa1004/graphql-gateway) | 9 service 통합 GraphQL gateway (schema stitching, JWT 인증 통합) | portfolio sibling |
 | **commerce-ops** (본 레포) | 이커머스 마이크로서비스 + 옵저버빌리티 + Spring Boot Ops Toolkit (starter 3 종) | starter provider |
 
 > 프로필 README: <https://github.com/ssa1004/ssa1004>
@@ -215,7 +217,7 @@ commerce-ops 자체 시나리오 (단일 서비스):
 k6 run load/baseline.js
 ```
 
-**portfolio 8 서비스 (k6 → Prometheus remote-write → 통합 대시보드):**
+**portfolio 10 서비스 (k6 → Prometheus remote-write → 통합 대시보드):**
 
 ```bash
 # commerce-ops 의 Prometheus 는 이미 remote-write receiver 가 켜져 있다
@@ -227,13 +229,13 @@ export K6_PROMETHEUS_RW_SERVER_URL=http://localhost:9090/api/v1/write
 # 예) auth-service
 cd /path/to/auth-service && ./scripts/run-load.sh
 
-# 예) resell-orderbook
-cd /path/to/resell-orderbook && ./scripts/run-load.sh
+# 예) bid-ask-marketplace
+cd /path/to/bid-ask-marketplace && ./scripts/run-load.sh
 ```
 
 각 service 가 `service=<name>` / `scenario=<scenario>` tag 를 자동 부여해서 같은
 Prometheus 로 흘려보낸다. Grafana 의 **Portfolio Load (k6 + actuator)** 대시보드 (uid
-`portfolio-load`) 에서 `service` / `scenario` 변수로 필터하면 8 service 시나리오의
+`portfolio-load`) 에서 `service` / `scenario` 변수로 필터하면 10 service 시나리오의
 k6 client metric (vus / http p95p99 / ws msgs / custom invariant) 과 commerce-ops
 server actuator metric (Hikari active / outbox lag / Saga 보상 / process CPU) 이 같은
 시간축에 plot 된다. 필요 k6 버전: **0.42+** (experimental-prometheus-rw output).
