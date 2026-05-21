@@ -113,7 +113,7 @@
 - **대안 1 — 모든 ID 마스킹**: 보안은 강해지지만 운영성 손실이 크다.
 - **대안 2 — 정책만 있고 헬퍼는 없음**: 사람마다 다른 방식으로 마스킹하면 같은 사용자가 다른 해시로 찍혀 trace 가 끊어진다.
 - **결과**:
-  - `services/{order,payment}-service/src/main/java/.../util/LogIds.java` 에 헬퍼.
+  - `services/{order,payment}-service/src/main/kotlin/.../util/LogIds.kt` 에 헬퍼.
   - inventory-service 는 `userId` 를 직접 다루지 않으므로 헬퍼 불필요.
   - logback 패턴에 `[%X{userId:-}]` 슬롯 추가 (order/payment).
   - 후속 (correlation-mdc-starter 정식 도입 시) 에 `Filter` 가 X-User-Id 헤더를 받아 자동으로 마스킹된 값을 MDC 에 넣도록 통합 예정.
