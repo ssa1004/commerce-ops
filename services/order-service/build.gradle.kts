@@ -7,6 +7,9 @@ plugins {
 	kotlin("plugin.jpa") version "2.1.0"
 	id("org.springframework.boot") version "3.5.14"
 	id("io.spring.dependency-management") version "1.1.7"
+	// OpenAPI spec build-time export — generateOpenApiDocs 가 앱을 부팅한 뒤
+	// /v3/api-docs 를 fetch 해 docs/openapi/order-service.yaml 로 떨어뜨린다.
+	id("org.springdoc.openapi-gradle-plugin") version "1.9.0"
 }
 
 group = "io.minishop"
@@ -51,6 +54,9 @@ dependencies {
 	implementation("io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0")
 
 	implementation("org.springframework.kafka:spring-kafka")
+
+	// OpenAPI / Swagger UI — REST API 를 OpenAPI 3 spec 으로 노출. Spring Boot 3.5 호환 2.8.x.
+	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.9")
 
 	// 자체 운영 라이브러리 (modules/* 를 composite build로 참조)
 	implementation("io.minishop:slow-query-detector")
@@ -99,4 +105,16 @@ tasks.withType<Test> {
 	environment("OTEL_SDK_DISABLED", "true")
 	// test 프로파일에서 outbox poller / Kafka listener auto-startup 끔
 	environment("SPRING_PROFILES_ACTIVE", "test")
+}
+
+// OpenAPI spec export 설정 — ./gradlew generateOpenApiDocs.
+// 플러그인이 bootRun 으로 앱을 띄우고 apiDocsUrl 을 fetch 해 outputFileName 으로 저장한다.
+// outputDir 은 repo 루트 docs/openapi (각 서비스가 services/<name>/ 하위라 ../../docs).
+// 앱 부팅에 Postgres / Kafka 가 필요하므로 로컬 단독 실행보다는 CI 에서
+// docker compose 와 함께 돌리는 것을 권장 (../../docs/openapi/README.md 참고).
+openApi {
+	apiDocsUrl.set("http://localhost:8081/v3/api-docs.yaml")
+	outputDir.set(layout.projectDirectory.dir("../../docs/openapi"))
+	outputFileName.set("order-service.yaml")
+	waitTimeInSeconds.set(120)
 }
