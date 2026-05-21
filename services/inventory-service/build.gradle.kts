@@ -7,7 +7,7 @@ plugins {
 	kotlin("jvm") version "1.9.25"
 	kotlin("plugin.spring") version "1.9.25"
 	kotlin("plugin.jpa") version "1.9.25"
-	id("org.springframework.boot") version "3.5.14"
+	id("org.springframework.boot") version "4.0.6"
 	id("io.spring.dependency-management") version "1.1.7"
 	// OpenAPI spec build-time export — generateOpenApiDocs 가 앱을 부팅한 뒤
 	// /v3/api-docs 를 fetch 해 docs/openapi/inventory-service.yaml 로 떨어뜨린다.
