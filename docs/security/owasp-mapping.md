@@ -50,7 +50,7 @@
 
 **후속 단계**:
 1. ResourceServer 활성 (`spring-boot-starter-oauth2-resource-server`) + `jwk-set-uri` = auth-stub
-2. controller 에 `@AuthenticationPrincipal Jwt` → `sub` 를 비교: `if (!order.getUserId().equals(jwt.getClaimAsString("sub"))) throw new AccessDeniedException(...)`
+2. controller 에 `@AuthenticationPrincipal Jwt` → `sub` 를 비교: `if (order.userId.toString() != jwt.getClaimAsString("sub")) throw AccessDeniedException(...)`
 3. `GET /orders` (listRecent) 는 *호출자 본인 주문* 으로 필터링
 
 ---
@@ -74,7 +74,7 @@
 
 > 응답 DTO 가 *조회자가 봐선 안 되는* 필드를 흘리는가?
 
-**스코프 — `web/dto/*Response.java`**
+**스코프 — `web/dto/*Response.kt`**
 
 | DTO | 노출 필드 | 평가 |
 |---|---|---|
@@ -86,11 +86,11 @@
 
 **상태 — GUARDED (shape)**.
 
-**이유** — DTO 는 모두 `record` 로 *명시적* 노출 필드만 직렬화 (entity 직접 노출 안 함). 신용카드 번호 / 비밀번호 / 토큰은 어디에도 없음. `failureReason` 의 vendor string 만 후속 sanitize 자리.
+**이유** — DTO 는 모두 `@JvmRecord data class` 로 *명시적* 노출 필드만 직렬화 (entity 직접 노출 안 함). 신용카드 번호 / 비밀번호 / 토큰은 어디에도 없음. `failureReason` 의 vendor string 만 후속 sanitize 자리.
 
 **구체 가드**:
 - `domain/*` 의 JPA entity 는 어떤 controller 도 직접 반환하지 않음 — 항상 `*Response.from(entity)` 변환.
-- request DTO 도 `record` — 알 수 없는 필드 (`mass assignment`) 는 `@JsonIgnoreProperties` 의 Spring Boot default 동작에 따라 ignore (Jackson 의 `FAIL_ON_UNKNOWN_PROPERTIES=false` default).
+- request DTO 도 `@JvmRecord data class` — 알 수 없는 필드 (`mass assignment`) 는 `@JsonIgnoreProperties` 의 Spring Boot default 동작에 따라 ignore (Jackson 의 `FAIL_ON_UNKNOWN_PROPERTIES=false` default).
 
 **후속 단계** — `failureReason` 을 enum 화 (`PgFailureCode.TIMEOUT / PG_5XX / DECLINED`) + vendor string 은 별도 audit log 로 분리.
 
@@ -245,7 +245,7 @@
 | API 버전 | **단일 버전** — `/orders`, `/payments`, `/inventories`. v1/v2 분기 없음. v1 deprecated 도 없음. |
 | Helm ingress prefix | `helm/.../ingress.yaml` 와 `values-prod.yaml` 의 `/api/v1/orders` 등은 *향후* 자리 (controller 가 아직 `/orders`) — 운영 배포 시 ingress 가 `/api/v1/orders` → `/orders` rewrite 하거나 controller 가 `/api/v1` prefix 를 추가 |
 | 환경 구분 | `dev` (compose) ↔ `prod` (`values-prod.yaml`) 가 명확히 분리. `deployEnv` env 가 OTel resource attribute `deployment.environment` 로 전파 — 트레이스에서 환경별 분리 가능 |
-| Service catalog | [catalog-info.yaml](../../catalog-info.yaml) — Backstage 표준. 3 서비스 + 5 모듈 + 1 컴포넌트 (auth-stub) 명시 |
+| Service catalog | [catalog-info.yaml](../../catalog-info.yaml) — Backstage 표준. 3 서비스 + 5 모듈 = 8 Component 명시 |
 | 미배포 컴포넌트 | `modules/chaos-injector` 는 *설계 단계* (README only) — 의존성으로 추가해도 동작 없음. ROADMAP Phase 3 Step 9 자리. `modules/actuator-extras` 는 v0.1 (`/actuator/hikari`) — 단, 어느 service 에도 아직 의존성으로 적용하지 않음 |
 
 **상태 — OK** (학습 레포의 단순 단일 버전 + 환경 구분 명시 + catalog 표준).
@@ -262,7 +262,7 @@
 
 | 경로 | 가드 |
 |---|---|
-| `payment-service` → PG (`PgClient`) | 1) Jackson deserialize 으로 schema 검증 (`PgChargeResponse` record) — 모르는 필드는 ignore. 2) `onStatus(isError, ...)` 화이트리스트 — 4xx/5xx 면 즉시 throw. 3) `read-timeout=5s` — `RestClient` 의 `SimpleClientHttpRequestFactory` 에 명시. 4) `ResourceAccessException` → `PgFailureException` 으로 통일된 매핑 |
+| `payment-service` → PG (`PgClient`) | 1) Jackson deserialize 으로 schema 검증 (`PgChargeResponse` data class) — 모르는 필드는 ignore. 2) `onStatus(isError, ...)` 화이트리스트 — 4xx/5xx 면 즉시 throw. 3) `read-timeout=5s` — `RestClient` 의 `SimpleClientHttpRequestFactory` 에 명시. 4) `ResourceAccessException` → `PgFailureException` 으로 통일된 매핑 |
 | `PgChargeResponse.reference` (외부 ID) | `Payment.externalRef` 에 그대로 저장 — `String` 타입. 길이 / 문자 cap 없음 — 향후 `@Size(max=64)` + 알파벳/숫자/-_ 화이트리스트 권장 |
 | `PgChargeResponse.reason` (failure string) | `Payment.failureReason` 에 그대로 저장 → `PaymentResponse.failureReason` 로 echo. *원문 vendor 메시지가 클라이언트에 노출* — API3 항목에서 언급한 sanitize 자리 |
 | Kafka consumer (order-service: payment.events / inventory.events) | `InboundPaymentEvent` / `InboundInventoryEvent` DTO 로 deserialize — schema 가드. Inbox 패턴으로 중복 처리 차단 ([ADR-018 inbox]) |

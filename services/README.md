@@ -12,7 +12,7 @@
 
 ## 공통 스택
 
-- Java 21 / Spring Boot 3.5 / Gradle (Kotlin DSL)
+- Kotlin (JDK 21 toolchain) / Spring Boot 3.5 / Gradle (Kotlin DSL)
 - Spring Web, Data JPA, Validation, Actuator
 - Flyway (DB 마이그레이션 — 스키마 변경을 SQL 파일 시퀀스로 관리)
 - Spring Kafka

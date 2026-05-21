@@ -1,6 +1,6 @@
 # Spring Boot Ops Toolkit
 
-레포 안에서 자체 개발하는 Spring Boot 운영 라이브러리 모음. 4개는 v0.1 동작 (그중 3개는 services/* 에 적용 중), 1개는 설계 단계 (README 만 — 정식 구현 전).
+레포 안에서 자체 개발하는 Spring Boot 운영 라이브러리 모음. 4개는 v0.1 동작 (그중 2개는 order-service 에 적용 중), 1개는 설계 단계 (README 만 — 정식 구현 전).
 
 | Module | 상태 | 한 줄 설명 |
 |---|---|---|
