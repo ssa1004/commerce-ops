@@ -1,6 +1,6 @@
 # Infra
 
-현재 단계에서 실제로 실행 가능한 Docker Compose 스택입니다. 서비스 컨테이너는 Phase 1에서 Spring Boot 프로젝트가 생성된 뒤 추가합니다.
+3개 마이크로서비스가 의존하는 인프라(DB·Redis·Kafka)와 옵저버빌리티 스택을 한 번에 띄우는 Docker Compose 스택입니다. 애플리케이션 서비스 자체는 컨테이너에 넣지 않고 `./gradlew bootRun`(루트 README의 Quick Start 참고) 또는 Helm(K8s)으로 실행합니다.
 
 ## Included Services
 

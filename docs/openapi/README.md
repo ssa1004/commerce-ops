@@ -32,4 +32,4 @@ cd services/inventory-service && ./gradlew generateOpenApiDocs
 
 - Swagger UI — 앱 실행 후 `http://localhost:<port>/swagger-ui.html`
 - Redoc — `npx @redocly/cli preview-docs docs/openapi/order-service.yaml`
-- 통합 뷰어 — profile repo `ssa1004/ssa1004` 의 `docs/api/index.html` (9 service spec 드롭다운)
+- 통합 뷰어 — profile repo `ssa1004/ssa1004` 의 `docs/api/index.html` (11 service spec 드롭다운)

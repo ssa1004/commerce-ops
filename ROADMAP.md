@@ -111,7 +111,7 @@
 - [x] 슬로우 쿼리 감지 — `slow_query_total` 카운터 + WARN 로그
 - [x] N+1 감지 (한 번의 작업에서 같은 모양의 쿼리가 N 번 반복되는 안티패턴 — JPA lazy loading 으로 자주 발생). 정규화 SQL (리터럴을 `?` 로 치환해 모양 비교) + ThreadLocal + 트랜잭션 종료 후 정리. `n_plus_one_total` 카운터
 - [x] `query_execution_seconds{outcome=ok|slow}` 타이머 (모든 쿼리의 실행 시간 분포)
-- [x] 13개 단위 테스트 (정규화 / 리스너 동작 / Spring wiring)
+- [x] 18개 단위 테스트 (정규화 / 리스너 동작 / N+1 필터 / Spring wiring)
 - [x] mavenLocal publish (`io.minishop:slow-query-detector:0.1.0-SNAPSHOT`)
 - [x] [README](modules/slow-query-detector/README.md) + [DESIGN.md](modules/slow-query-detector/DESIGN.md)
 
@@ -135,7 +135,7 @@
 - [x] always-on `Recording` + rolling chunk (5분) + retention (24개 = 2시간) — continuous profiling 도구들이 일반적으로 채택하는 패턴
 - [x] `/actuator/jfr` (status), `POST /actuator/jfr/{tag}` (ad-hoc dump) — exposure 미허용 시 endpoint 자체 비등록 (권한 가드)
 - [x] sensitive event filter (`mask-sensitive-events`) — `jdk.SocketRead/Write`, `jdk.FileRead/Write` 발생 시점 disable (PII 보호)
-- [x] 16개 단위 테스트 (속성 / 동작 / 자동설정 wiring)
+- [x] 32개 단위 테스트 (속성 / 동작 / 자동설정 wiring / S3 업로드)
 - [x] order-service 에 적용 + [JFR 분석 가이드](docs/runbook/jfr-analysis.md) (JMC / async-profiler / programmatic)
 - [x] S3/MinIO 자동 업로드 (`JfrChunkUploader` + `S3JfrChunkUploader`) — chunk 가 떨어진 직후 비동기로 원격 사본. `/actuator/jfr` 응답에 local + remote chunk. ADR-018
 
