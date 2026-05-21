@@ -11,7 +11,7 @@
 #   3) 기존 otel-collector 는 그대로 유지하되 Jaeger 까지 export 하는 config 로 교체
 #
 # 검증 / 데모 flow 는 scripts/integration-demo.sh 참조.
-# 본 override 는 8 레포 portfolio set 의 통합 시연용 — 운영 배포가 아니다.
+# 본 override 는 10 레포 portfolio set 의 통합 시연용 — 운영 배포가 아니다.
 
 name: commerce-ops
 
