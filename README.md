@@ -1,8 +1,9 @@
 # commerce-ops
 
 [![CI](https://github.com/ssa1004/commerce-ops/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ssa1004/commerce-ops/actions/workflows/ci.yml)
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://openjdk.org/projects/jdk/21/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.1-7F52FF.svg)](https://kotlinlang.org/)
+[![Java](https://img.shields.io/badge/JDK-21-orange.svg)](https://openjdk.org/projects/jdk/21/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-6DB33F.svg)](https://spring.io/projects/spring-boot)
 
 이커머스 마이크로서비스(주문/결제/재고) 위에 **옵저버빌리티 스택 (운영 중인 시스템의 상태를 메트릭·로그·트레이스로 들여다보는 도구 모음)**, **자체 Spring Boot 운영 라이브러리**, **장애 분석 회고**를 함께 쌓아가는 production-grade observability platform 입니다.
@@ -17,7 +18,7 @@
 
 ## 무엇이 들어있나
 
-- **3개 마이크로서비스** (Spring Boot 3.5 / Java 21): `order` → `payment` → `inventory`, 서비스끼리 REST 동기 호출로 묶고 + SAGA (한 흐름이 여러 서비스에 걸쳐 있을 때, 중간에 실패하면 앞단계를 되돌리는 보상 패턴) 로 실패 보상
+- **3개 마이크로서비스** (Spring Boot 3.5 / Kotlin, JDK 21): `order` → `payment` → `inventory`, 서비스끼리 REST 동기 호출로 묶고 + SAGA (한 흐름이 여러 서비스에 걸쳐 있을 때, 중간에 실패하면 앞단계를 되돌리는 보상 패턴) 로 실패 보상
 - **Outbox 패턴** (order-service): DB 변경과 같은 트랜잭션 안에서 "보낼 이벤트"를 별도 테이블 행으로 같이 저장하고, 별도 폴러 (주기적으로 미발행 행을 긁어 Kafka에 보내는 백그라운드 작업) 가 발행. `SELECT … FOR UPDATE SKIP LOCKED` 로 여러 폴러 인스턴스가 같은 행을 겹쳐 보내지 않게 막음
 - **옵저버빌리티 스택**: OpenTelemetry (벤더 중립 표준 — 어느 백엔드든 같은 코드로 보낼 수 있음) → Prometheus (메트릭 — 시간에 따른 숫자 추이) + Loki (로그 — 텍스트 메시지) + Tempo (트레이스 — 요청별 호출 흐름) → Grafana 시각화. trace ↔ log 양방향 점프하도록 데이터소스 자동 설정
 - **5개 알람 + 런북**: 응답시간 p99 (전체 요청을 빠른 순으로 줄세웠을 때 99번째 — 즉 가장 느린 1% 의 컷오프), 5xx 비율, HikariCP (DB 커넥션 풀) 포화, GC pause (가비지 컬렉션이 앱을 잠시 멈추는 시간), 분산락 timeout — 각각 발화 조건/영향/진단 흐름/완화책/사후 분석 (post-mortem) 가이드
@@ -376,14 +377,14 @@ ExternalSecret / SealedSecret 으로 미리 만들어 둔 Secret 을 `extraEnvFr
 commerce-ops/
 ├── README.md / ARCHITECTURE.md / ROADMAP.md
 ├── docs/
-│   ├── decision-log.md      # ADR 25개
+│   ├── decision-log.md      # ADR 26개
 │   ├── runbook/             # 알람별 대응 절차
 │   └── slo.md
 ├── services/
 │   ├── order-service/       # 주문 + SAGA + Outbox
 │   ├── payment-service/     # 결제 + mock-pg
 │   └── inventory-service/   # 재고 + 분산락
-├── modules/                 # Phase 3: 자체 Spring Boot 운영 라이브러리 (3/5 구현)
+├── modules/                 # Phase 3: 자체 Spring Boot 운영 라이브러리 (4/5 구현)
 ├── infra/                   # docker-compose + Prometheus/Grafana/Loki/Tempo/Alertmanager 설정
 ├── helm/mini-shop/          # K8s 배포 — umbrella chart (3 sub-chart: order/payment/inventory)
 ├── load/                    # k6 시나리오

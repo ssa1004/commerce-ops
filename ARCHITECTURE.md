@@ -84,7 +84,7 @@ choreography (안무) 는 어느 한 서비스가 흐름을 지휘하지 않고,
 
 ## 자체 운영 라이브러리 (Phase 3, `modules/`)
 
-운영 노하우를 작은 Spring Boot starter들로 떼어내 모든 서비스에 의존성으로 추가합니다. 4개 v0.1 동작 (그중 3개는 services/* 가 composite build 로 직접 사용), 1개는 설계 단계.
+운영 노하우를 작은 Spring Boot starter들로 떼어내 모든 서비스에 의존성으로 추가합니다. 4개 v0.1 동작 (그중 2개는 order-service 가 composite build 로 직접 사용), 1개는 설계 단계.
 
 | 모듈 | 상태 | 역할 |
 |---|---|---|
@@ -98,9 +98,9 @@ choreography (안무) 는 어느 한 서비스가 흐름을 지휘하지 않고,
 
 ## 설계 결정 (요약)
 
-자세한 배경은 [docs/decision-log.md](docs/decision-log.md)에 ADR로 기록 (현재 25개). 핵심:
+자세한 배경은 [docs/decision-log.md](docs/decision-log.md)에 ADR로 기록 (현재 26개). 핵심:
 
-- **Java 21 + Spring Boot 3.5** — Virtual Threads (운영체제 스레드보다 훨씬 가벼운 JVM 차원의 스레드 — 동시성 비용을 크게 낮춤) 등 신규 문법 활용
+- **Kotlin + Spring Boot 3.5 (JDK 21)** — 3 서비스는 Kotlin, starter 모듈은 Java. Virtual Threads (운영체제 스레드보다 훨씬 가벼운 JVM 차원의 스레드 — 동시성 비용을 크게 낮춤) 등 JDK 21 기능 활용
 - **서비스별 DB 분리** — 마이크로서비스 원칙 + 독립 진화 (한 서비스의 스키마 변경이 다른 서비스를 막지 않게)
 - **OTel 표준 채택** — 벤더 락인 (특정 도구에 코드가 묶이는 상태) 회피, 트레이스/로그만 OTel 경로 (메트릭은 Prometheus 가 직접 긁어옴)
 - **Tempo (vs Jaeger)** — Grafana 스택 통합 + S3 호환 스토리지 (저비용 객체 저장소를 트레이스 백엔드로 사용)
