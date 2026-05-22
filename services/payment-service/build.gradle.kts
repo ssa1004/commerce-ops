@@ -52,7 +52,7 @@ dependencies {
 	implementation("org.springframework.kafka:spring-kafka")
 
 	// OpenAPI / Swagger UI — REST API 를 OpenAPI 3 spec 으로 노출. Spring Boot 3.5 호환 2.8.x.
-	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.9")
+	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3")
 
 	// Kotlin runtime + reflect (Spring 의 reflection 기반 binding / DI)
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
