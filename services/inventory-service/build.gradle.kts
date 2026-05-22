@@ -59,7 +59,7 @@ dependencies {
 	implementation("org.springframework.kafka:spring-kafka")
 
 	// OpenAPI / Swagger UI — REST API 를 OpenAPI 3 spec 으로 노출. Spring Boot 3.5 호환 2.8.x.
-	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.9")
+	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3")
 
 	// Kotlin support — Jackson Kotlin 모듈은 data class 의 nullable / default 값을 정확히
 	// 역직렬화하기 위해 필요. reflect 는 Spring 의 인자 이름 기반 바인딩에 사용.
