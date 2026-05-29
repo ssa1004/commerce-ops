@@ -159,13 +159,27 @@ docker compose \
 
 ## Quick Start
 
+> `make help` 로 전체 명령을 볼 수 있습니다. 가장 빠른 길:
+> ```bash
+> make up                       # 인프라 기동 (DB/Redis/Kafka/관측 스택)
+> make run-order                # 다른 셸에서 각 서비스 (run-payment / run-inventory)
+> make demo                     # POST /orders → trace/log/metric 시연
+> open http://localhost:3000    # Grafana (admin/admin)
+> ```
+
 ### 1. 인프라 띄우기
 
 ```bash
-docker compose -f infra/docker-compose.yml up -d
+make up
+# 또는: docker compose -f infra/docker-compose.yml up -d
 ```
 
 Postgres, Redis, Kafka, Prometheus, Loki, Tempo, Grafana, Alertmanager가 한 번에 올라옵니다. Grafana는 데이터소스와 대시보드까지 자동 프로비저닝됩니다.
+
+> **Kafka listener 설계**: 호스트에서 `./gradlew bootRun` 으로 띄운 서비스는 `localhost:9092` 로,
+> 컨테이너끼리는 `kafka:29092` 로 붙습니다 (compose 의 EXTERNAL/INTERNAL 두 listener).
+> 단일 listener (`advertised: kafka:9092`) 면 호스트가 `kafka` 호스트명을 못 풀어 producer 가
+> 무한 대기/실패합니다 — Outbox relay 가 Kafka 로 발행하지 못하는 흔한 함정.
 
 | URL | 용도 |
 |---|---|
@@ -351,6 +365,8 @@ ExternalSecret / SealedSecret 으로 미리 만들어 둔 Secret 을 `extraEnvFr
 3. [docs/decision-log.md](docs/decision-log.md) — trade-off (한쪽을 얻기 위해 다른 쪽을 양보한 결정) 기록 (ADR — Architecture Decision Record, 어떤 선택을 했는지 짧게 기록한 메모)
 4. [case-studies/](case-studies/) — 실제 부딪힌 사례
 5. [docs/runbook/](docs/runbook/) — 알람이 떴을 때의 대응 절차
+
+백엔드 패턴을 **공부 목적**으로 본다면 → [docs/backend-skills-index.md](docs/backend-skills-index.md): 이 레포가 시연하는 패턴을 "코드 위치 → 왜(ADR) → 이론([dev-lab](https://github.com/ssa1004/dev-lab))" 으로 잇는 학습 인덱스.
 
 서비스/인프라 코드를 보려면 각 디렉토리의 README:
 - [services/order-service/README.md](services/order-service/README.md) — SAGA orchestration (한 서비스가 흐름을 직접 지휘하며 실패 시 보상까지 책임지는 방식) + Outbox + **DLQ admin REST API** (`byOrder` / `byCustomer` 차원, SAGA / OUTBOX replay 의 멱등성)
