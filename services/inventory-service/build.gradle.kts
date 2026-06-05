@@ -4,7 +4,7 @@ plugins {
 	// @get:JvmName / @JvmRecord 패턴 적용. plugin.spring 은 @Service / @Component /
 	// @RestController 같은 Spring 빈 클래스를 자동으로 `open` 처리, plugin.jpa 는
 	// @Entity 클래스에 noarg 생성자를 합성한다.
-	kotlin("jvm") version "1.9.25"
+	kotlin("jvm") version "2.4.0"
 	kotlin("plugin.spring") version "1.9.25"
 	kotlin("plugin.jpa") version "1.9.25"
 	id("org.springframework.boot") version "3.5.14"
