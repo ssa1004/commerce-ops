@@ -23,7 +23,7 @@ repositories {
 
 dependencyManagement {
 	imports {
-		mavenBom("org.springframework.boot:spring-boot-dependencies:3.5.14")
+		mavenBom("org.springframework.boot:spring-boot-dependencies:4.1.0")
 		mavenBom("io.opentelemetry:opentelemetry-bom:1.45.0")
 	}
 }
