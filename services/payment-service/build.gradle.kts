@@ -3,7 +3,7 @@ plugins {
 	kotlin("jvm") version "2.1.0"
 	kotlin("plugin.spring") version "2.1.0"
 	kotlin("plugin.jpa") version "2.1.0"
-	id("org.springframework.boot") version "3.5.14"
+	id("org.springframework.boot") version "4.1.0"
 	id("io.spring.dependency-management") version "1.1.7"
 	// OpenAPI spec build-time export — generateOpenApiDocs 가 앱을 부팅한 뒤
 	// /v3/api-docs 를 fetch 해 docs/openapi/payment-service.yaml 로 떨어뜨린다.
