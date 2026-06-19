@@ -6,6 +6,41 @@
 [![Java](https://img.shields.io/badge/JDK-21-orange.svg)](https://openjdk.org/projects/jdk/21/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-6DB33F.svg)](https://spring.io/projects/spring-boot)
 
+> **GitHub repo:** [`ssa1004/commerce-ops`](https://github.com/ssa1004/commerce-ops).
+> The local working folder is named `mini-shop-observability` (the original project
+> name); on GitHub it lives as **commerce-ops**. All in-repo links below use the
+> `commerce-ops` slug so they resolve on GitHub.
+
+**English** · [한국어 ↓](#한국어-소개)
+
+A production-grade **observability platform** built on top of a small e-commerce
+microservice trio (order / payment / inventory). It layers three things on those
+services: an **observability stack** (metrics, logs, traces — Prometheus + Loki + Tempo +
+Grafana, fed by OpenTelemetry), a set of **home-grown Spring Boot ops libraries**
+(`modules/` — slow-query/N+1 detection, continuous JFR, trace_id→MDC correlation), and
+**incident retrospectives** that record what an operator looked at and how they decided.
+
+![commerce-ops architecture & telemetry flow](docs/diagrams/architecture.svg)
+
+**The 90-second story.** One `POST /orders` fans out across
+`order → inventory.reserve → payment.charge → mock-pg` — four hops, stitched into a
+**single OpenTelemetry trace**. Click any span in Grafana/Tempo and jump to the matching
+Loki logs by `trace_id`; the reverse jump works too. If payment fails, a SAGA
+compensation releases the reserved inventory, and the `X-Order-Outcome` response header
+classifies *what kind* of failure it was. **8 alert rules** watch the SLOs, and every
+alert links to a [runbook](docs/runbook/) telling you where to look first.
+
+**Where to start:**
+- This README (scope) → [ARCHITECTURE.md](ARCHITECTURE.md) (components & data flow) →
+  [docs/decision-log.md](docs/decision-log.md) (ADRs).
+- **Visual walkthrough & how to capture the screenshots:**
+  [docs/screenshots/README.md](docs/screenshots/README.md).
+- Quick run: [Quick Start ↓](#quick-start) (`make up`, then `bootRun` the 3 services).
+
+---
+
+<a name="한국어-소개"></a>
+
 이커머스 마이크로서비스(주문/결제/재고) 위에 **옵저버빌리티 스택 (운영 중인 시스템의 상태를 메트릭·로그·트레이스로 들여다보는 도구 모음)**, **자체 Spring Boot 운영 라이브러리**, **장애 분석 회고**를 함께 쌓아가는 production-grade observability platform 입니다.
 
 > 운영자 관점에서 무엇을 보고 어떻게 판단했는지를 함께 기록합니다.
@@ -14,14 +49,14 @@
 
 `POST /orders` 한 번을 던지면 — `order → inventory.reserve → payment.charge → mock-pg`까지 4개 서비스를 거치는 흐름이, **하나의 trace (요청 하나가 여러 서비스를 거치는 동안 거친 모든 작업의 타임라인)** 안에 모든 span (그 타임라인의 한 칸, 즉 서비스/메서드 단위 작업) 으로 묶여 Grafana에 그려집니다. trace에서 span을 누르면 같은 `trace_id` (요청 식별자) 의 로그로 점프하고, 결제가 실패하면 자동 보상으로 재고가 복구되며, 응답 헤더 `X-Order-Outcome`이 어떤 종류의 실패인지 분류해줍니다.
 
-5개의 알람 룰이 SLO (Service Level Objective — 이 정도는 정상이라고 합의한 기준선) 를 모니터링하고, 알람마다 [런북 (알람이 떴을 때 어디부터 보고 어떻게 진정시킬지를 적어둔 절차서)](docs/runbook/)이 어디부터 볼지 안내합니다. 카오스 (의도적으로 장애를 주입해 시스템 반응을 보는 실험) 로 발견한 첫 부정합 사례는 [case-studies/](case-studies/)에 회고로 남아 있습니다.
+8개의 알람 룰이 SLO (Service Level Objective — 이 정도는 정상이라고 합의한 기준선) 를 모니터링하고, 알람마다 [런북 (알람이 떴을 때 어디부터 보고 어떻게 진정시킬지를 적어둔 절차서)](docs/runbook/)이 어디부터 볼지 안내합니다. 카오스 (의도적으로 장애를 주입해 시스템 반응을 보는 실험) 로 발견한 첫 부정합 사례는 [case-studies/](case-studies/)에 회고로 남아 있습니다.
 
 ## 무엇이 들어있나
 
 - **3개 마이크로서비스** (Spring Boot 3.5 / Kotlin, JDK 21): `order` → `payment` → `inventory`, 서비스끼리 REST 동기 호출로 묶고 + SAGA (한 흐름이 여러 서비스에 걸쳐 있을 때, 중간에 실패하면 앞단계를 되돌리는 보상 패턴) 로 실패 보상
 - **Outbox 패턴** (order-service): DB 변경과 같은 트랜잭션 안에서 "보낼 이벤트"를 별도 테이블 행으로 같이 저장하고, 별도 폴러 (주기적으로 미발행 행을 긁어 Kafka에 보내는 백그라운드 작업) 가 발행. `SELECT … FOR UPDATE SKIP LOCKED` 로 여러 폴러 인스턴스가 같은 행을 겹쳐 보내지 않게 막음
 - **옵저버빌리티 스택**: OpenTelemetry (벤더 중립 표준 — 어느 백엔드든 같은 코드로 보낼 수 있음) → Prometheus (메트릭 — 시간에 따른 숫자 추이) + Loki (로그 — 텍스트 메시지) + Tempo (트레이스 — 요청별 호출 흐름) → Grafana 시각화. trace ↔ log 양방향 점프하도록 데이터소스 자동 설정
-- **5개 알람 + 런북**: 응답시간 p99 (전체 요청을 빠른 순으로 줄세웠을 때 99번째 — 즉 가장 느린 1% 의 컷오프), 5xx 비율, HikariCP (DB 커넥션 풀) 포화, GC pause (가비지 컬렉션이 앱을 잠시 멈추는 시간), 분산락 timeout — 각각 발화 조건/영향/진단 흐름/완화책/사후 분석 (post-mortem) 가이드
+- **8개 알람 + 런북**: 응답시간 p99 (전체 요청을 빠른 순으로 줄세웠을 때 99번째 — 즉 가장 느린 1% 의 컷오프), 5xx 비율, HikariCP (DB 커넥션 풀) 포화, GC pause (가비지 컬렉션이 앱을 잠시 멈추는 시간), 분산락 timeout, N+1 감지, 동시성 limiter 포화, tail-sampling 버퍼 포화 — 각각 발화 조건/영향/진단 흐름/완화책/사후 분석 (post-mortem) 가이드 ([`infra/prometheus/alerts.yml`](infra/prometheus/alerts.yml) · 룰마다 [`docs/runbook/`](docs/runbook/) 매핑)
 - **장애 분석 회고**: 카오스로 장애 주입 → 트레이스로 원인 분석 → 데이터 부정합 사례 ([case-studies/2026-05-07-payment-timeout-race.md](case-studies/2026-05-07-payment-timeout-race.md))
 
 전체 구조와 설계 결정의 배경은 [ARCHITECTURE.md](ARCHITECTURE.md) / [docs/decision-log.md](docs/decision-log.md) 참고.
