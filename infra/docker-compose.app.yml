@@ -1,0 +1,98 @@
+# docker-compose.app.yml — OPTIONAL override that runs the 3 application services
+# *inside* compose, so the whole demo is one command. By default the services run on the
+# host via `./gradlew bootRun` (see root README Quick Start) — this file is for when you
+# just want everything up without three extra shells.
+#
+#   docker compose -f infra/docker-compose.yml -f infra/docker-compose.app.yml up -d --build
+#
+# Design notes:
+#  - Build context is the repo root (..) because order-service's composite build pulls in
+#    modules/ via includeBuild(...). Each service has its own Dockerfile under services/<n>/.
+#  - Inside the compose network the services reach infra by container DNS:
+#    postgres / redis / kafka:29092 (INTERNAL listener) / otel-collector:4318.
+#  - Each service still PUBLISHES its HTTP port to the host (8081/8082/8083). That's what
+#    lets Prometheus keep scraping host.docker.internal:808x (ADR-008) with NO change to
+#    infra/prometheus/prometheus.yml — the scrape target resolves to the published port.
+#  - extra_hosts maps host.docker.internal on Linux (already resolvable on Docker Desktop).
+
+services:
+  order-service:
+    build:
+      context: ..
+      dockerfile: services/order-service/Dockerfile
+    image: commerce-ops/order-service:dev
+    container_name: minishop-order-service
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: mini
+      DB_PASSWORD: mini
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      OTEL_HOST: otel-collector
+      PAYMENT_URL: http://payment-service:8082
+      INVENTORY_URL: http://inventory-service:8083
+    ports:
+      - "8081:8081"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      otel-collector:
+        condition: service_started
+
+  payment-service:
+    build:
+      context: ..
+      dockerfile: services/payment-service/Dockerfile
+    image: commerce-ops/payment-service:dev
+    container_name: minishop-payment-service
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: mini
+      DB_PASSWORD: mini
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      OTEL_HOST: otel-collector
+    ports:
+      - "8082:8082"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      otel-collector:
+        condition: service_started
+
+  inventory-service:
+    build:
+      context: ..
+      dockerfile: services/inventory-service/Dockerfile
+    image: commerce-ops/inventory-service:dev
+    container_name: minishop-inventory-service
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: mini
+      DB_PASSWORD: mini
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      OTEL_HOST: otel-collector
+    ports:
+      - "8083:8083"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      otel-collector:
+        condition: service_started

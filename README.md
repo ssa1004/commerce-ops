@@ -237,6 +237,12 @@ cd services/inventory-service && ./gradlew bootRun   # :8083
 
 JDK 21이 없어도 됩니다 — Gradle 툴체인이 foojay에서 자동 다운로드합니다.
 
+> **셸 3개 없이 한 번에 (옵션):** 각 서비스에 `Dockerfile` 이 있고, `infra/docker-compose.app.yml`
+> override 를 얹으면 앱까지 컨테이너로 한 명령에 올라옵니다 —
+> `docker compose -f infra/docker-compose.yml -f infra/docker-compose.app.yml up -d --build`.
+> 컨테이너 안에서도 8081/8082/8083 을 호스트로 publish 해 Prometheus 의 `host.docker.internal`
+> scrape 가 그대로 동작합니다. 자세한 내용은 [infra/README.md](infra/README.md#full-stack-one-command).
+
 ### 3. 흐름 직접 만져보기
 
 ```bash
