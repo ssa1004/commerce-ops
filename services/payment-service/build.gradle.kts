@@ -8,6 +8,8 @@ plugins {
 	// OpenAPI spec build-time export — generateOpenApiDocs 가 앱을 부팅한 뒤
 	// /v3/api-docs 를 fetch 해 docs/openapi/payment-service.yaml 로 떨어뜨린다.
 	id("org.springdoc.openapi-gradle-plugin") version "1.9.0"
+	// Kover — Kotlin code coverage. ./gradlew koverXmlReport / koverHtmlReport.
+	id("org.jetbrains.kotlinx.kover") version "0.9.1"
 }
 
 group = "io.minishop"
@@ -92,4 +94,20 @@ openApi {
 	outputDir.set(layout.projectDirectory.dir("../../docs/openapi"))
 	outputFileName.set("payment-service.yaml")
 	waitTimeInSeconds.set(120)
+}
+
+// Kover coverage — Spring bootstrap / DTO / 설정 클래스는 분모에서 제외.
+kover {
+	reports {
+		filters {
+			excludes {
+				classes(
+					"io.minishop.payment.PaymentServiceApplication*",
+					"io.minishop.payment.PaymentServiceApplicationKt",
+					"io.minishop.payment.*.dto.*",
+					"io.minishop.payment.config.*",
+				)
+			}
+		}
+	}
 }
