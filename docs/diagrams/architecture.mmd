@@ -1,0 +1,58 @@
+%% commerce-ops — system architecture & telemetry flow
+%% Render to SVG:
+%%   npx -y @mermaid-js/mermaid-cli@11 -i docs/diagrams/architecture.mmd -o docs/diagrams/architecture.svg
+%% See docs/screenshots/README.md for the full diagram/screenshot workflow.
+flowchart TB
+  client([Client])
+
+  subgraph services["Application services (host · ./gradlew bootRun)"]
+    order["order-service :8081<br/>SAGA orchestration + Outbox"]
+    payment["payment-service :8082<br/>charge + mock-pg + afterCommit publish"]
+    inventory["inventory-service :8083<br/>Redisson lock + idempotency"]
+  end
+
+  subgraph stores["Stateful infra (docker-compose)"]
+    pg[("PostgreSQL<br/>orderdb / paymentdb / inventorydb")]
+    redis[("Redis<br/>distributed lock")]
+    kafka[["Kafka<br/>order/payment/inventory.events"]]
+  end
+
+  subgraph obs["Observability stack (docker-compose)"]
+    otel["OpenTelemetry<br/>Collector"]
+    prom["Prometheus"]
+    loki["Loki"]
+    tempo["Tempo"]
+    grafana["Grafana<br/>dashboards + alerts"]
+    am["Alertmanager"]
+  end
+
+  client -->|"POST /orders"| order
+  order -->|"reserve (sync REST)"| inventory
+  order -->|"charge (sync REST)"| payment
+  payment -->|"charge"| payment
+
+  order -.->|"Outbox poller"| kafka
+  payment -.-> kafka
+  inventory -.-> kafka
+
+  order --- pg
+  payment --- pg
+  inventory --- pg
+  inventory --- redis
+
+  order -.->|"OTLP traces + logs"| otel
+  payment -.-> otel
+  inventory -.-> otel
+  prom -->|"scrape /actuator/prometheus"| services
+
+  otel --> tempo
+  otel --> loki
+  prom --> grafana
+  loki --> grafana
+  tempo --> grafana
+  prom --> am
+
+  classDef svc fill:#6DB33F22,stroke:#6DB33F,color:#222;
+  classDef ob fill:#F4633A22,stroke:#F4633A,color:#222;
+  class order,payment,inventory svc;
+  class otel,prom,loki,tempo,grafana,am ob;
