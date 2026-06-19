@@ -1,0 +1,26 @@
+# Build context is the repo root for the per-service Dockerfiles
+# (order-service needs modules/ for its composite build). Keep the context lean:
+# exclude build outputs, caches, and anything not needed to produce a boot jar.
+
+**/build/
+**/.gradle/
+.gradle-cache/
+**/*.class
+
+# VCS / IDE / OS
+.git/
+.github/
+.idea/
+.vscode/
+**/*.iml
+.DS_Store
+
+# Everything unrelated to building the 3 services
+helm/
+load/
+chaos/
+case-studies/
+docs/
+infra/
+scripts/
+*.md

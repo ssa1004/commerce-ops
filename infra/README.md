@@ -25,6 +25,25 @@ docker compose -f infra/docker-compose.yml ps
 
 Grafana는 <http://localhost:3000> 에서 `admin / admin`으로 접속할 수 있습니다.
 
+<a name="full-stack-one-command"></a>
+### 한 번에 풀스택 (앱까지 컨테이너로 — 옵션)
+
+기본은 인프라만 띄우고 3 서비스는 호스트에서 `./gradlew bootRun` 으로 띄웁니다. 셸 3개를 더 열지 않고 **한 명령으로 전부** 올리고 싶으면 `docker-compose.app.yml` override 를 추가합니다:
+
+```bash
+docker compose \
+  -f infra/docker-compose.yml \
+  -f infra/docker-compose.app.yml \
+  up -d --build
+```
+
+- 각 서비스는 자기 `services/<name>/Dockerfile` (multi-stage, JDK 21 빌드 → JRE 런타임) 로 빌드됩니다. build context 는 레포 루트 — order-service 가 `modules/` 를 composite build 로 당겨오기 때문입니다.
+- 컨테이너 안에서 인프라는 컨테이너 DNS 로 붙습니다 (`postgres` / `redis` / `kafka:29092` INTERNAL listener / `otel-collector:4318`).
+- 각 서비스는 HTTP 포트 (8081/8082/8083) 를 호스트로 publish 합니다 — 그래야 Prometheus 의 `host.docker.internal:808x` scrape (ADR-008) 가 `prometheus.yml` 수정 없이 그대로 동작합니다.
+- 설정 검증 (Docker daemon 없이 YAML merge 만): `docker compose -f infra/docker-compose.yml -f infra/docker-compose.app.yml config`.
+
+> 이미지 빌드/기동은 Docker daemon 이 떠 있어야 합니다. 본 레포의 표준 데모 경로는 여전히 *인프라는 컨테이너 + 앱은 호스트 bootRun* 입니다 (Prometheus host scrape 전제와 가장 잘 맞음).
+
 ## Validate Configs
 
 ```bash
