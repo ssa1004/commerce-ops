@@ -10,6 +10,9 @@ plugins {
 	// OpenAPI spec build-time export — generateOpenApiDocs 가 앱을 부팅한 뒤
 	// /v3/api-docs 를 fetch 해 docs/openapi/order-service.yaml 로 떨어뜨린다.
 	id("org.springdoc.openapi-gradle-plugin") version "1.9.0"
+	// Kover — Kotlin code coverage. ./gradlew koverXmlReport / koverHtmlReport.
+	// 프로덕션 코드는 Kotlin, 테스트는 Java/Kotlin 혼재 — Kover 가 둘 다 계측한다.
+	id("org.jetbrains.kotlinx.kover") version "0.9.1"
 }
 
 group = "io.minishop"
@@ -117,4 +120,21 @@ openApi {
 	outputDir.set(layout.projectDirectory.dir("../../docs/openapi"))
 	outputFileName.set("order-service.yaml")
 	waitTimeInSeconds.set(120)
+}
+
+// Kover coverage — Spring bootstrap / DTO / 설정 클래스는 단위 테스트 대상이 아니라
+// 분모에서 제외해 도메인·서비스 로직의 실커버리지가 희석되지 않게 한다.
+kover {
+	reports {
+		filters {
+			excludes {
+				classes(
+					"io.minishop.order.OrderServiceApplication*",
+					"io.minishop.order.OrderServiceApplicationKt",
+					"io.minishop.order.*.dto.*",
+					"io.minishop.order.config.*",
+				)
+			}
+		}
+	}
 }
