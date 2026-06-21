@@ -90,3 +90,36 @@ updates:
     labels:
       - dependencies
       - gradle
+
+  # --- Docker: services/* Dockerfile 의 base image (eclipse-temurin) 갱신 ---
+  # 각 Dockerfile 이 자기 디렉터리에 있으므로 directory 를 서비스별로 따로 둔다.
+  # FROM eclipse-temurin:21-jdk / 21-jre 의 새 패치 태그가 나오면 PR 을 연다.
+  - package-ecosystem: docker
+    directory: /services/order-service
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: build
+    labels:
+      - dependencies
+      - docker
+
+  - package-ecosystem: docker
+    directory: /services/payment-service
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: build
+    labels:
+      - dependencies
+      - docker
+
+  - package-ecosystem: docker
+    directory: /services/inventory-service
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: build
+    labels:
+      - dependencies
+      - docker
