@@ -6,7 +6,7 @@
 # Standalone build from repo root:
 #   docker build -f services/inventory-service/Dockerfile -t commerce-ops/inventory-service .
 
-FROM eclipse-temurin:21-jdk AS build
+FROM eclipse-temurin:25-jdk AS build
 # pipefail: RUN 안의 파이프(find | head) 한 단계라도 실패하면 빌드를 멈춘다.
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 WORKDIR /workspace
@@ -17,7 +17,7 @@ RUN ./gradlew --no-daemon clean bootJar -x test \
  && app_jar="$(find build/libs -maxdepth 1 -name '*.jar' ! -name '*-plain.jar' | head -1)" \
  && cp "$app_jar" /workspace/app.jar
 
-FROM eclipse-temurin:21-jre AS runtime
+FROM eclipse-temurin:25-jre AS runtime
 
 # OCI image labels — registry/Scanner 가 출처와 버전을 추적할 수 있게.
 LABEL org.opencontainers.image.title="inventory-service" \
