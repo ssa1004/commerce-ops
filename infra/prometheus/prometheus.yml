@@ -7,6 +7,10 @@ global:
 
 rule_files:
   - /etc/prometheus/alerts.yml
+  # SLO error-budget: recording rule(윈도우별 error-ratio) 를 먼저 로드하고, burn-rate
+  # 알람이 그 시계열을 비교한다. docs/slo.md 의 multi-window/multi-burn-rate 정책 구현.
+  - /etc/prometheus/recording-rules.yml
+  - /etc/prometheus/burn-rate-alerts.yml
 
 alerting:
   alertmanagers:

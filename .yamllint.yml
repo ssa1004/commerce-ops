@@ -1,0 +1,26 @@
+# yamllint 설정 — 이 레포의 기존 YAML 스타일에 맞춘 룰셋.
+#
+# 왜 default 를 그대로 안 쓰나:
+#   - line-length: PromQL 표현식 (alerts.yml / recording-rules.yml / burn-rate-alerts.yml)
+#     과 helm template 한 줄 식은 80자를 자연히 넘는다. 가독성을 위해 줄을 쪼개면 오히려
+#     쿼리가 읽기 어려워지므로 경고 수준 + 넉넉한 한도로 둔다.
+#   - document-start: 이 레포는 '---' 헤더를 쓰지 않는 관례 (기존 모든 yaml 동일).
+#
+# helm chart 의 charts/ 산출물과 packaged .tgz, gradle wrapper 등은 린트 대상 아님.
+extends: default
+
+rules:
+  line-length:
+    max: 140
+    level: warning
+  document-start: disable
+  comments:
+    min-spaces-from-content: 1
+  truthy:
+    # GitHub Actions 의 'on:' 키가 boolean true 로 해석되는 것을 허용.
+    check-keys: false
+
+ignore: |
+  helm/**/charts/
+  **/build/
+  *.tgz

@@ -1,0 +1,126 @@
+# promtool test rules — recording-rules.yml + burn-rate-alerts.yml 가 의도대로
+# 발화/침묵하는지 단위검증. 실행:
+#   promtool test rules infra/prometheus/burn-rate-tests.yml
+#
+# 핵심 검증 포인트:
+#   1. error-ratio recording rule 이 5xx/total 을 정확히 계산하는가.
+#   2. fast-burn(P1) 이 1h+5m 윈도우가 둘 다 임계를 넘을 때만 발화하는가.
+#   3. slow-burn(P2) 이 6h+30m 윈도우 기준으로 발화하는가.
+#   4. error 가 임계 아래면 아무 알람도 발화하지 않는가 (false-positive 방지).
+rule_files:
+  - recording-rules.yml
+  - burn-rate-alerts.yml
+
+# 평가 간격. 윈도우(최대 6h)를 채우려면 충분한 길이의 series 가 필요하므로 1m 간격.
+evaluation_interval: 1m
+
+tests:
+  # ================================================================
+  # CASE 1 — order-service 심각한 5xx 스파이크 → fast-burn(P1) 발화
+  # 전체 10 req/s 중 1 req/s 가 5xx → ratio 0.10 > fast 임계 0.072.
+  # 7h 동안 일정하게 유지해 1h/6h 윈도우를 모두 임계 위로 채운다.
+  # ================================================================
+  - interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{application="order-service",status="200"}'
+        # 9 req/s → 분당 540 증가. 0 에서 시작해 7h(=420m) 동안 선형 증가.
+        values: '0+540x420'
+      - series: 'http_server_requests_seconds_count{application="order-service",status="500"}'
+        # 1 req/s → 분당 60 증가. ratio = 60/(540+60) = 0.10.
+        values: '0+60x420'
+    promql_expr_test:
+      # 6h 시점의 error-ratio 가 0.10 인지.
+      - expr: job:slo_errors_per_request:ratio_rate1h{application="order-service",slo="availability"}
+        eval_time: 6h
+        exp_samples:
+          - labels: 'job:slo_errors_per_request:ratio_rate1h{application="order-service",slo="availability"}'
+            value: 1.0E-1
+    alert_rule_test:
+      # 6h 시점: 1h(0.10) 와 5m(0.10) 모두 > 0.072 이고 for:2m 충족 → P1 발화.
+      - eval_time: 6h
+        alertname: order_availability_error_budget_fast_burn
+        exp_alerts:
+          - exp_labels:
+              severity: P1
+              service: order-service
+              slo: availability
+              burn_rate: fast
+              application: order-service
+            exp_annotations:
+              summary: "order-service 가용성 error budget 을 빠르게 소진 중 (1h burn ≥ 14.4x)"
+              description: |
+                1시간 윈도우와 5분 윈도우의 5xx 비율이 모두 fast-burn 임계 (예산을 1시간에 2%
+                소진하는 속도) 를 초과. 99.5% SLO 의 30일 예산(약 3.6h 다운타임)이 이 속도면
+                약 2.5일이면 고갈된다. 즉시 대응: order-service 5xx 의 원인(보통 payment/inventory
+                의존 장애)을 Tempo trace + hikari/GC 알람과 교차 확인.
+              runbook_url: https://github.com/ssa1004/commerce-ops/blob/main/docs/runbook/order-availability-burn.md
+      # 6h 시점엔 slow-burn(P2)도 6h(0.10)+30m(0.10) > 0.03 이라 같이 발화한다 (정상).
+      - eval_time: 6h
+        alertname: order_availability_error_budget_slow_burn
+        exp_alerts:
+          - exp_labels:
+              severity: P2
+              service: order-service
+              slo: availability
+              burn_rate: slow
+              application: order-service
+            exp_annotations:
+              summary: "order-service 가용성 error budget 이 꾸준히 새는 중 (6h burn ≥ 6x)"
+              description: |
+                6시간 윈도우와 30분 윈도우의 5xx 비율이 모두 slow-burn 임계 (예산을 6시간에 5%
+                소진) 를 초과. 폭발적이진 않지만 방치하면 한 달 예산을 며칠 안에 다 쓴다.
+                업무 시간 내 근본원인 조사 — 특정 uri/의존성에 만성적 5xx 가 있는지 확인.
+              runbook_url: https://github.com/ssa1004/commerce-ops/blob/main/docs/runbook/order-availability-burn.md
+
+  # ================================================================
+  # CASE 2 — order-service 정상 트래픽 (5xx 0.3%) → 아무 알람도 안 뜸
+  # ratio 0.003 < slow 임계 0.03 < fast 임계 0.072.
+  # ================================================================
+  - interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{application="order-service",status="200"}'
+        values: '0+598x420'   # ~9.97 req/s
+      - series: 'http_server_requests_seconds_count{application="order-service",status="500"}'
+        values: '0+2x420'     # ~0.033 req/s → ratio 2/600 = 0.00333
+    alert_rule_test:
+      - eval_time: 6h
+        alertname: order_availability_error_budget_fast_burn
+        exp_alerts: []
+      - eval_time: 6h
+        alertname: order_availability_error_budget_slow_burn
+        exp_alerts: []
+
+  # ================================================================
+  # CASE 3 — payment-service 만성적 실패 (3%) → slow-burn(P2) 발화, fast 는 침묵
+  # ratio 0.03: slow 임계 0.06 미만? 아니 — payment slow=0.06. 0.03 < 0.06 이므로
+  # slow 도 안 떠야 한다. 확실한 slow-only 를 위해 ratio 0.08 사용:
+  #   payment fast 임계 0.144, slow 임계 0.06. 0.06 < 0.08 < 0.144 → slow 만 발화.
+  # ================================================================
+  - interval: 1m
+    input_series:
+      - series: 'payment_result_total{application="payment-service",result="SUCCESS"}'
+        values: '0+552x420'   # 9.2 req/s
+      - series: 'payment_result_total{application="payment-service",result="DECLINED"}'
+        values: '0+48x420'    # 0.8 req/s → ratio 48/600 = 0.08 (slow 0.06 < 0.08 < fast 0.144)
+    # 정확한 ratio 값은 rate() 나눗셈의 부동소수 오차로 0.0799999.. 가 되어 exact-match 가
+    # 취약하다. payment 쪽은 알람 발화/침묵(behavioral contract)만 검증한다 — CASE 1 의
+    # order ratio(0.10) 가 exact-match 로 recording rule 산식 자체는 이미 검증됨.
+    alert_rule_test:
+      - eval_time: 6h
+        alertname: payment_success_error_budget_fast_burn
+        exp_alerts: []
+      - eval_time: 6h
+        alertname: payment_success_error_budget_slow_burn
+        exp_alerts:
+          - exp_labels:
+              severity: P2
+              service: payment-service
+              slo: success
+              burn_rate: slow
+              application: payment-service
+            exp_annotations:
+              summary: "payment-service 성공률 error budget 이 꾸준히 새는 중 (6h burn ≥ 6x)"
+              description: |
+                6시간/30분 윈도우 모두에서 결제 실패 비율이 slow-burn 임계를 초과. 만성적 결제
+                실패는 매출 직결 — PG 계약/한도, 카드사 거절코드 추세, 재시도 정책을 점검.
+              runbook_url: https://github.com/ssa1004/commerce-ops/blob/main/docs/runbook/payment-success-burn.md
