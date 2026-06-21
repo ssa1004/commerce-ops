@@ -1,0 +1,103 @@
+# SLO recording rules — docs/slo.md 의 availability SLO 를 multi-window burn-rate 알람이
+# 바로 쓸 수 있는 형태로 미리 계산해 둔다.
+#
+# 왜 recording rule 인가:
+#   burn-rate 알람은 같은 error-ratio 식을 5m/30m/1h/6h 여러 윈도우로 반복 평가한다.
+#   매 알람마다 raw histogram/counter 식을 다시 쓰면 (1) 식이 길어 오타가 나고 (2) SLO
+#   목표선이 한 곳에 모이지 않는다. error-ratio 를 윈도우별 recording rule 로 한 번만
+#   정의하고, 알람은 그 시계열을 비교만 한다.
+#
+# 명명 규칙 (Prometheus 공식 SLO 예제와 동일):
+#   <metric>:<aggregation>:rate<window>
+#   job:slo_errors_per_request:ratio_rate<window>  ← 요청당 에러 비율
+#
+# error 의 정의는 SLI 와 일치시킨다:
+#   - order-service availability: 5xx 응답 / 전체 응답 (4xx 는 비즈니스 결과라 제외 —
+#     alerts.yml 의 order_error_rate_spike 와 동일 기준).
+#   - payment-service success: 결제 결과 이벤트 중 SUCCESS 가 아닌 비율. mock-pg 든 실제
+#     PG 든 payment_result_total{result=...} 카운터로 노출된다고 가정.
+groups:
+  # ----------------------------------------------------------------
+  # order-service availability — SLO 99.5% (error budget 0.5%)
+  # ----------------------------------------------------------------
+  - name: mini-shop.slo.order-availability.recording
+    interval: 30s
+    rules:
+      - record: job:slo_errors_per_request:ratio_rate5m
+        expr: |
+          sum(rate(http_server_requests_seconds_count{application="order-service",status=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(http_server_requests_seconds_count{application="order-service"}[5m])), 0.001)
+        labels:
+          application: order-service
+          slo: availability
+
+      - record: job:slo_errors_per_request:ratio_rate30m
+        expr: |
+          sum(rate(http_server_requests_seconds_count{application="order-service",status=~"5.."}[30m]))
+          /
+          clamp_min(sum(rate(http_server_requests_seconds_count{application="order-service"}[30m])), 0.001)
+        labels:
+          application: order-service
+          slo: availability
+
+      - record: job:slo_errors_per_request:ratio_rate1h
+        expr: |
+          sum(rate(http_server_requests_seconds_count{application="order-service",status=~"5.."}[1h]))
+          /
+          clamp_min(sum(rate(http_server_requests_seconds_count{application="order-service"}[1h])), 0.001)
+        labels:
+          application: order-service
+          slo: availability
+
+      - record: job:slo_errors_per_request:ratio_rate6h
+        expr: |
+          sum(rate(http_server_requests_seconds_count{application="order-service",status=~"5.."}[6h]))
+          /
+          clamp_min(sum(rate(http_server_requests_seconds_count{application="order-service"}[6h])), 0.001)
+        labels:
+          application: order-service
+          slo: availability
+
+  # ----------------------------------------------------------------
+  # payment-service success — SLO 99.0% (error budget 1.0%)
+  # 외부 PG 의존성을 고려한 더 느슨한 목표. error = result != SUCCESS.
+  # ----------------------------------------------------------------
+  - name: mini-shop.slo.payment-success.recording
+    interval: 30s
+    rules:
+      - record: job:slo_errors_per_request:ratio_rate5m
+        expr: |
+          sum(rate(payment_result_total{application="payment-service",result!="SUCCESS"}[5m]))
+          /
+          clamp_min(sum(rate(payment_result_total{application="payment-service"}[5m])), 0.001)
+        labels:
+          application: payment-service
+          slo: success
+
+      - record: job:slo_errors_per_request:ratio_rate30m
+        expr: |
+          sum(rate(payment_result_total{application="payment-service",result!="SUCCESS"}[30m]))
+          /
+          clamp_min(sum(rate(payment_result_total{application="payment-service"}[30m])), 0.001)
+        labels:
+          application: payment-service
+          slo: success
+
+      - record: job:slo_errors_per_request:ratio_rate1h
+        expr: |
+          sum(rate(payment_result_total{application="payment-service",result!="SUCCESS"}[1h]))
+          /
+          clamp_min(sum(rate(payment_result_total{application="payment-service"}[1h])), 0.001)
+        labels:
+          application: payment-service
+          slo: success
+
+      - record: job:slo_errors_per_request:ratio_rate6h
+        expr: |
+          sum(rate(payment_result_total{application="payment-service",result!="SUCCESS"}[6h]))
+          /
+          clamp_min(sum(rate(payment_result_total{application="payment-service"}[6h])), 0.001)
+        labels:
+          application: payment-service
+          slo: success

@@ -1,0 +1,115 @@
+# Multi-window, multi-burn-rate SLO 알람 — docs/slo.md 의 error-budget 정책 구현.
+#
+# 배경 (Google SRE Workbook, "Alerting on SLOs"):
+#   error budget = 1 - SLO. burn rate r = 현재 error 비율 / 허용 error 비율.
+#   r = 1 이면 30일 예산을 정확히 30일에 소진. r = 14.4 면 1시간에 2% (1/50) 소진.
+#
+# docs/slo.md 매핑:
+#   Fast burn — 1시간에 예산 2% 소진 → burn rate 14.4 → P1
+#       2% 를 1시간에 = (0.02 * 30d) / 1h = 14.4
+#   Slow burn — 6시간에 예산 5% 소진 → burn rate 6 → P2
+#       5% 를 6시간에 = (0.05 * 30d) / 6h = 6.0
+#
+# 왜 two-window 인가 (long AND short 둘 다 초과해야 발화):
+#   - long window (1h / 6h) 만 보면 spike 가 끝나도 한참 더 울린다 (느린 reset).
+#   - short window (5m / 30m) 를 AND 로 걸면, 문제가 *현재도* 진행 중일 때만 발화하고
+#     회복되면 즉시 꺼진다 → 알람 피로 감소 + 빠른 reset.
+#
+# threshold 는 절대 error-ratio 로 환산:
+#   order   (budget 0.005): fast 0.005*14.4 = 0.072,  slow 0.005*6 = 0.03
+#   payment (budget 0.01) : fast 0.01 *14.4 = 0.144,  slow 0.01 *6 = 0.06
+groups:
+  # ----------------------------------------------------------------
+  # order-service availability — SLO 99.5%, budget 0.5%
+  # ----------------------------------------------------------------
+  - name: mini-shop.slo.order-availability.burnrate
+    rules:
+      - alert: order_availability_error_budget_fast_burn
+        expr: |
+          (
+            job:slo_errors_per_request:ratio_rate1h{application="order-service",slo="availability"} > (14.4 * 0.005)
+            and
+            job:slo_errors_per_request:ratio_rate5m{application="order-service",slo="availability"} > (14.4 * 0.005)
+          )
+        for: 2m
+        labels:
+          severity: P1
+          service: order-service
+          slo: availability
+          burn_rate: fast
+        annotations:
+          summary: "order-service 가용성 error budget 을 빠르게 소진 중 (1h burn ≥ 14.4x)"
+          description: |
+            1시간 윈도우와 5분 윈도우의 5xx 비율이 모두 fast-burn 임계 (예산을 1시간에 2%
+            소진하는 속도) 를 초과. 99.5% SLO 의 30일 예산(약 3.6h 다운타임)이 이 속도면
+            약 2.5일이면 고갈된다. 즉시 대응: order-service 5xx 의 원인(보통 payment/inventory
+            의존 장애)을 Tempo trace + hikari/GC 알람과 교차 확인.
+          runbook_url: https://github.com/ssa1004/commerce-ops/blob/main/docs/runbook/order-availability-burn.md
+
+      - alert: order_availability_error_budget_slow_burn
+        expr: |
+          (
+            job:slo_errors_per_request:ratio_rate6h{application="order-service",slo="availability"} > (6 * 0.005)
+            and
+            job:slo_errors_per_request:ratio_rate30m{application="order-service",slo="availability"} > (6 * 0.005)
+          )
+        for: 15m
+        labels:
+          severity: P2
+          service: order-service
+          slo: availability
+          burn_rate: slow
+        annotations:
+          summary: "order-service 가용성 error budget 이 꾸준히 새는 중 (6h burn ≥ 6x)"
+          description: |
+            6시간 윈도우와 30분 윈도우의 5xx 비율이 모두 slow-burn 임계 (예산을 6시간에 5%
+            소진) 를 초과. 폭발적이진 않지만 방치하면 한 달 예산을 며칠 안에 다 쓴다.
+            업무 시간 내 근본원인 조사 — 특정 uri/의존성에 만성적 5xx 가 있는지 확인.
+          runbook_url: https://github.com/ssa1004/commerce-ops/blob/main/docs/runbook/order-availability-burn.md
+
+  # ----------------------------------------------------------------
+  # payment-service success — SLO 99.0%, budget 1.0%
+  # ----------------------------------------------------------------
+  - name: mini-shop.slo.payment-success.burnrate
+    rules:
+      - alert: payment_success_error_budget_fast_burn
+        expr: |
+          (
+            job:slo_errors_per_request:ratio_rate1h{application="payment-service",slo="success"} > (14.4 * 0.01)
+            and
+            job:slo_errors_per_request:ratio_rate5m{application="payment-service",slo="success"} > (14.4 * 0.01)
+          )
+        for: 2m
+        labels:
+          severity: P1
+          service: payment-service
+          slo: success
+          burn_rate: fast
+        annotations:
+          summary: "payment-service 성공률 error budget 을 빠르게 소진 중 (1h burn ≥ 14.4x)"
+          description: |
+            1시간/5분 윈도우 모두에서 결제 실패(result!=SUCCESS) 비율이 fast-burn 임계를 초과.
+            99.0% SLO (외부 PG 의존성 고려한 1% 예산) 가 1시간에 2% 속도로 새는 중.
+            외부 PG 응답코드 분포 / 타임아웃, mock-pg 라면 MOCK_PG_FAILURE_RATE 설정,
+            그리고 order 쪽 cascade(client_concurrency_limit_saturated) 를 함께 확인.
+          runbook_url: https://github.com/ssa1004/commerce-ops/blob/main/docs/runbook/payment-success-burn.md
+
+      - alert: payment_success_error_budget_slow_burn
+        expr: |
+          (
+            job:slo_errors_per_request:ratio_rate6h{application="payment-service",slo="success"} > (6 * 0.01)
+            and
+            job:slo_errors_per_request:ratio_rate30m{application="payment-service",slo="success"} > (6 * 0.01)
+          )
+        for: 15m
+        labels:
+          severity: P2
+          service: payment-service
+          slo: success
+          burn_rate: slow
+        annotations:
+          summary: "payment-service 성공률 error budget 이 꾸준히 새는 중 (6h burn ≥ 6x)"
+          description: |
+            6시간/30분 윈도우 모두에서 결제 실패 비율이 slow-burn 임계를 초과. 만성적 결제
+            실패는 매출 직결 — PG 계약/한도, 카드사 거절코드 추세, 재시도 정책을 점검.
+          runbook_url: https://github.com/ssa1004/commerce-ops/blob/main/docs/runbook/payment-success-burn.md
