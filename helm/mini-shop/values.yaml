@@ -59,6 +59,8 @@ global:
   preStopSleepSeconds: 10
 
   # Prometheus scrape annotation — 자체 배포한 prometheus (또는 ServiceMonitor 사용 시 무시).
+  # kube-prometheus-stack(Operator) 를 쓰면 annotation 대신 각 sub-chart 의
+  #   <service>.serviceMonitor.enabled=true 로 ServiceMonitor 를 켜고 이 annotation 은 끈다.
   prometheusScrape:
     enabled: true
     port: "8080"

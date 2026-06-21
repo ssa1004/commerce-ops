@@ -1,0 +1,66 @@
+# helm-unittest — ServiceMonitor 템플릿의 values-gating 과 핵심 필드 검증.
+# 실행: helm unittest helm/mini-shop/charts/order-service
+suite: order-service ServiceMonitor
+templates:
+  - templates/servicemonitor.yaml
+tests:
+  - it: 기본값에서는 ServiceMonitor 를 렌더하지 않는다 (CRD 없는 클러스터 보호)
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: serviceMonitor.enabled=true 면 ServiceMonitor 1개를 렌더한다
+    set:
+      serviceMonitor:
+        enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: ServiceMonitor
+      - isAPIVersion:
+          of: monitoring.coreos.com/v1
+
+  - it: http 포트를 global.prometheusScrape.path 로 스크랩한다
+    set:
+      serviceMonitor:
+        enabled: true
+    asserts:
+      - equal:
+          path: spec.endpoints[0].port
+          value: http
+      - equal:
+          path: spec.endpoints[0].path
+          value: /actuator/prometheus
+      - equal:
+          path: spec.endpoints[0].interval
+          value: 15s
+
+  - it: serviceMonitor.path 와 labels override 가 반영된다
+    set:
+      serviceMonitor:
+        enabled: true
+        path: /custom/metrics
+        labels:
+          release: kube-prometheus-stack
+    asserts:
+      - equal:
+          path: spec.endpoints[0].path
+          value: /custom/metrics
+      - equal:
+          path: metadata.labels.release
+          value: kube-prometheus-stack
+
+  - it: selector 가 chart 의 selectorLabels 와 일치한다
+    set:
+      serviceMonitor:
+        enabled: true
+    release:
+      name: mini-shop
+    asserts:
+      - equal:
+          path: spec.selector.matchLabels["app.kubernetes.io/name"]
+          value: order-service
+      - equal:
+          path: spec.selector.matchLabels["app.kubernetes.io/instance"]
+          value: mini-shop

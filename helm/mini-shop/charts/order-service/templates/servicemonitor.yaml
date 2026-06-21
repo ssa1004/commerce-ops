@@ -1,0 +1,44 @@
+{{/*
+ServiceMonitor — Prometheus Operator (kube-prometheus-stack) 가 이 Service 를 스크랩하게
+선언. values-gated: serviceMonitor.enabled=true 일 때만 렌더. pod annotation 기반
+스크랩 (deployment 의 prometheus.io/*) 과 둘 중 하나만 쓰면 된다 — Operator 를 쓰는 환경은
+이쪽을, 자체 Prometheus + annotation discovery 를 쓰면 그쪽을 켠다.
+
+apiVersion 은 monitoring.coreos.com/v1 (CRD). CRD 가 클러스터에 없으면 install 이 실패하므로
+기본 disabled. helm template | kubeconform 는 -ignore-missing-schemas 로 통과.
+*/}}
+{{- if .Values.serviceMonitor.enabled -}}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "order-service.fullname" . }}
+  {{- with .Values.serviceMonitor.namespace }}
+  namespace: {{ . }}
+  {{- end }}
+  labels:
+    {{- include "order-service.labels" . | nindent 4 }}
+    {{- with .Values.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "order-service.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: http
+      path: {{ .Values.serviceMonitor.path | default .Values.global.prometheusScrape.path }}
+      interval: {{ .Values.serviceMonitor.interval }}
+      scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout }}
+      scheme: http
+      {{- with .Values.serviceMonitor.relabelings }}
+      relabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.serviceMonitor.metricRelabelings }}
+      metricRelabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+{{- end }}

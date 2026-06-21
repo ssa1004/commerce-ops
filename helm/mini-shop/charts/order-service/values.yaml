@@ -161,3 +161,19 @@ tolerations: []
 affinity: {}
 podLabels: {}
 podAnnotations: {}
+
+# ServiceMonitor — Prometheus Operator (kube-prometheus-stack) 사용 시 켠다.
+# 기본 disabled: monitoring.coreos.com/v1 CRD 가 없는 클러스터에서 install 이 깨지지 않도록.
+# annotation 기반 discovery (deployment 의 prometheus.io/*) 와는 택일.
+serviceMonitor:
+  enabled: false
+  # 비우면 Operator 가 감시하는 release namespace 에 생성.
+  namespace: ""
+  # Operator 의 serviceMonitorSelector 와 매칭시키기 위한 추가 라벨 (예: release: kube-prometheus-stack).
+  labels: {}
+  # 비우면 global.prometheusScrape.path (/actuator/prometheus) 사용.
+  path: ""
+  interval: 15s
+  scrapeTimeout: 10s
+  relabelings: []
+  metricRelabelings: []
