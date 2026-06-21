@@ -4,3 +4,6 @@
 *.swp
 *.bak
 *.tmp
+# helm-unittest 스위트는 패키지에 포함하지 않는다 (CI 검증용).
+tests/
+*_test.yaml
