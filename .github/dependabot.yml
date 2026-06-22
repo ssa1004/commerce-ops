@@ -6,13 +6,21 @@
 # 모듈 (chaos-injector) 은 build.gradle.kts 가 없어 제외 — 정식 구현 시 추가.
 #
 # CI YAML 매트릭스와 동일한 원칙: services/* · modules/* 가 늘면 여기에 directory 만 추가.
+#
+# 알림 정책: 모든 항목 monthly + open-pull-requests-limit 5 + groups 로 한 ecosystem/directory 의
+# 업데이트를 PR 하나로 묶는다. 매주 쏟아지던 개별 PR/리뷰 알림을 월 1회 묶음 PR 로 줄이는 게 목적.
 version: 2
 updates:
   # --- GitHub Actions (.github/workflows/*) — 레포 전체에 하나 ---
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 5
+    # 모든 actions 업데이트를 월 1회 묶음 PR 하나로.
+    groups:
+      github-actions-all:
+        patterns: ["*"]
     commit-message:
       prefix: ci
     labels:
@@ -23,7 +31,11 @@ updates:
   - package-ecosystem: gradle
     directory: /modules/slow-query-detector
     schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      gradle-slow-query-detector-all:
+        patterns: ["*"]
     commit-message:
       prefix: build
     labels:
@@ -33,7 +45,11 @@ updates:
   - package-ecosystem: gradle
     directory: /modules/jfr-recorder-starter
     schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      gradle-jfr-recorder-starter-all:
+        patterns: ["*"]
     commit-message:
       prefix: build
     labels:
@@ -43,7 +59,11 @@ updates:
   - package-ecosystem: gradle
     directory: /modules/correlation-mdc-starter
     schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      gradle-correlation-mdc-starter-all:
+        patterns: ["*"]
     commit-message:
       prefix: build
     labels:
@@ -53,7 +73,11 @@ updates:
   - package-ecosystem: gradle
     directory: /modules/actuator-extras
     schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      gradle-actuator-extras-all:
+        patterns: ["*"]
     commit-message:
       prefix: build
     labels:
@@ -64,7 +88,11 @@ updates:
   - package-ecosystem: gradle
     directory: /services/order-service
     schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      gradle-order-service-all:
+        patterns: ["*"]
     commit-message:
       prefix: build
     labels:
@@ -74,7 +102,11 @@ updates:
   - package-ecosystem: gradle
     directory: /services/payment-service
     schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      gradle-payment-service-all:
+        patterns: ["*"]
     commit-message:
       prefix: build
     labels:
@@ -84,7 +116,11 @@ updates:
   - package-ecosystem: gradle
     directory: /services/inventory-service
     schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      gradle-inventory-service-all:
+        patterns: ["*"]
     commit-message:
       prefix: build
     labels:
@@ -97,7 +133,11 @@ updates:
   - package-ecosystem: docker
     directory: /services/order-service
     schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      docker-order-service-all:
+        patterns: ["*"]
     commit-message:
       prefix: build
     labels:
@@ -107,7 +147,11 @@ updates:
   - package-ecosystem: docker
     directory: /services/payment-service
     schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      docker-payment-service-all:
+        patterns: ["*"]
     commit-message:
       prefix: build
     labels:
@@ -117,7 +161,11 @@ updates:
   - package-ecosystem: docker
     directory: /services/inventory-service
     schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      docker-inventory-service-all:
+        patterns: ["*"]
     commit-message:
       prefix: build
     labels:
