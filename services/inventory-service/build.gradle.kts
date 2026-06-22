@@ -4,16 +4,16 @@ plugins {
 	// @get:JvmName / @JvmRecord 패턴 적용. plugin.spring 은 @Service / @Component /
 	// @RestController 같은 Spring 빈 클래스를 자동으로 `open` 처리, plugin.jpa 는
 	// @Entity 클래스에 noarg 생성자를 합성한다.
-	kotlin("jvm") version "1.9.25"
-	kotlin("plugin.spring") version "1.9.25"
-	kotlin("plugin.jpa") version "1.9.25"
-	id("org.springframework.boot") version "3.5.14"
+	kotlin("jvm") version "2.4.0"
+	kotlin("plugin.spring") version "2.4.0"
+	kotlin("plugin.jpa") version "2.4.0"
+	id("org.springframework.boot") version "4.1.0"
 	id("io.spring.dependency-management") version "1.1.7"
 	// OpenAPI spec build-time export — generateOpenApiDocs 가 앱을 부팅한 뒤
 	// /v3/api-docs 를 fetch 해 docs/openapi/inventory-service.yaml 로 떨어뜨린다.
 	id("org.springdoc.openapi-gradle-plugin") version "1.9.0"
 	// Kover — Kotlin code coverage. ./gradlew koverXmlReport / koverHtmlReport.
-	id("org.jetbrains.kotlinx.kover") version "0.9.1"
+	id("org.jetbrains.kotlinx.kover") version "0.9.8"
 }
 
 group = "io.minishop"
@@ -53,7 +53,7 @@ dependencies {
 	implementation("io.micrometer:micrometer-registry-prometheus")
 
 	// Redisson for distributed locks (auto-configures from spring.data.redis.*)
-	implementation("org.redisson:redisson-spring-boot-starter:3.31.0")
+	implementation("org.redisson:redisson-spring-boot-starter:4.6.1")
 
 	implementation("io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter")
 	implementation("io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0")
@@ -61,7 +61,7 @@ dependencies {
 	implementation("org.springframework.kafka:spring-kafka")
 
 	// OpenAPI / Swagger UI — REST API 를 OpenAPI 3 spec 으로 노출. Spring Boot 3.5 호환 2.8.x.
-	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.9")
+	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3")
 
 	// Kotlin support — Jackson Kotlin 모듈은 data class 의 nullable / default 값을 정확히
 	// 역직렬화하기 위해 필요. reflect 는 Spring 의 인자 이름 기반 바인딩에 사용.
