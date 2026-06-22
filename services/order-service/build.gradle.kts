@@ -2,17 +2,17 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
 	java
-	kotlin("jvm") version "2.1.0"
-	kotlin("plugin.spring") version "2.1.0"
-	kotlin("plugin.jpa") version "2.1.0"
-	id("org.springframework.boot") version "3.5.14"
+	kotlin("jvm") version "2.4.0"
+	kotlin("plugin.spring") version "2.4.0"
+	kotlin("plugin.jpa") version "2.4.0"
+	id("org.springframework.boot") version "4.1.0"
 	id("io.spring.dependency-management") version "1.1.7"
 	// OpenAPI spec build-time export — generateOpenApiDocs 가 앱을 부팅한 뒤
 	// /v3/api-docs 를 fetch 해 docs/openapi/order-service.yaml 로 떨어뜨린다.
 	id("org.springdoc.openapi-gradle-plugin") version "1.9.0"
 	// Kover — Kotlin code coverage. ./gradlew koverXmlReport / koverHtmlReport.
 	// 프로덕션 코드는 Kotlin, 테스트는 Java/Kotlin 혼재 — Kover 가 둘 다 계측한다.
-	id("org.jetbrains.kotlinx.kover") version "0.9.1"
+	id("org.jetbrains.kotlinx.kover") version "0.9.8"
 }
 
 group = "io.minishop"
@@ -59,7 +59,7 @@ dependencies {
 	implementation("org.springframework.kafka:spring-kafka")
 
 	// OpenAPI / Swagger UI — REST API 를 OpenAPI 3 spec 으로 노출. Spring Boot 3.5 호환 2.8.x.
-	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.9")
+	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3")
 
 	// 자체 운영 라이브러리 (modules/* 를 composite build로 참조)
 	implementation("io.minishop:slow-query-detector")
@@ -74,7 +74,7 @@ dependencies {
 	// Spring StateMachine — OrderSAGA 의 *상태 + 트리거 + 가드 + 액션* 을 명시 모델로 표현.
 	// 기존의 동기 if/else SAGA 와 *병행* 동작 (initial step) 시키며 결정 일관성을 검증한다.
 	// 후속 step 에서 진실의 원천을 StateMachine 으로 옮길 예정 — ADR-019 참고.
-	implementation("org.springframework.statemachine:spring-statemachine-core:4.0.1")
+	implementation("org.springframework.statemachine:spring-statemachine-core:4.0.2")
 
 	runtimeOnly("org.postgresql:postgresql")
 
