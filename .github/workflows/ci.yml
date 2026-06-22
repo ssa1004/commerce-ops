@@ -24,7 +24,7 @@ jobs:
     name: Lint workflows & Dockerfiles
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: actionlint (workflow 문법/표현식/SHA 검사)
         # 공식 액션 대신 동봉 스크립트로 핀-프리 설치 (자체 SHA 핀 불필요).
         run: |
@@ -54,9 +54,9 @@ jobs:
     env:
       KUBECONFORM_VERSION: v0.6.7
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Install helm
-        uses: azure/setup-helm@b9e51907a09c216f16ebe8536097933489208112 # v4.3.0
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
         with:
           version: v3.16.4
       - name: Install kubeconform
@@ -97,7 +97,7 @@ jobs:
       # SARIF 업로드에 필요.
       security-events: write
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Trivy config scan (Dockerfile / compose / helm IaC)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -120,14 +120,14 @@ jobs:
         continue-on-error: true
 
       - name: Upload Trivy config SARIF
-        uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
         continue-on-error: true
         with:
           sarif_file: trivy-config.sarif
           category: trivy-config
 
       - name: Upload Trivy fs SARIF
-        uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
         continue-on-error: true
         with:
           sarif_file: trivy-fs.sarif
@@ -137,7 +137,7 @@ jobs:
     name: Validate infra configs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Validate docker-compose
         run: docker compose -f infra/docker-compose.yml config > /dev/null
       - name: Validate Prometheus config
@@ -180,18 +180,18 @@ jobs:
           - correlation-mdc-starter
           - actuator-extras
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287 # v5
         with:
           java-version: '21'
           distribution: 'temurin'
-      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+      - uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
       - name: Build & test
         working-directory: modules/${{ matrix.module }}
         run: ./gradlew build --no-daemon
       - name: Upload test report
         if: failure()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-report-${{ matrix.module }}
           path: modules/${{ matrix.module }}/build/reports/tests/
@@ -211,12 +211,12 @@ jobs:
           - payment-service
           - inventory-service
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287 # v5
         with:
           java-version: '21'
           distribution: 'temurin'
-      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+      - uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
       - name: Build & test
         working-directory: services/${{ matrix.service }}
         # check 는 build 의 부분집합이지만 명시 — 새로운 verification task 가 추가되면
@@ -229,14 +229,14 @@ jobs:
         run: ./gradlew koverLog koverXmlReport koverHtmlReport --no-daemon
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-${{ matrix.service }}
           path: services/${{ matrix.service }}/build/reports/kover/
           if-no-files-found: ignore
       - name: Upload test report
         if: failure()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-report-${{ matrix.service }}
           path: services/${{ matrix.service }}/build/reports/tests/
