@@ -14,6 +14,11 @@ class InventoryClient(
     @Qualifier("inventoryRestClient") private val client: RestClient,
 ) {
 
+    /**
+     * 재고 예약. release 와 달리 실패를 *삼키지 않고 throw* — 예약은 SAGA 의 정방향 단계라
+     * 실패가 상위(OrderService)로 올라가야 보상(이미 잡은 재고 release)이 트리거된다. CONFLICT 와
+     * 그 외 오류를 굳이 다른 예외로 나눈 이유도 outcome 매핑(품절 vs 인프라 장애)이 달라서.
+     */
     fun reserve(productId: Long, orderId: Long, quantity: Int): ReservationResult {
         try {
             return client.post()
