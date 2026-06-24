@@ -1,10 +1,12 @@
 package io.minishop.order.repository
 
 import io.minishop.order.domain.Order
+import io.minishop.order.domain.OrderStatus
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.EntityGraph
 import org.springframework.data.jpa.repository.JpaRepository
+import java.time.Instant
 import java.util.Optional
 
 interface OrderRepository : JpaRepository<Order, Long> {
@@ -23,4 +25,10 @@ interface OrderRepository : JpaRepository<Order, Long> {
      * 운영에서는 detail 쿼리처럼 EntityGraph 또는 fetch join을 써야 한다.
      */
     fun findAllByOrderByCreatedAtDesc(pageable: Pageable): Page<Order>
+
+    /**
+     * 멈춘(stuck) 주문 — 일정 시각 이전에 만들어졌는데 아직 PENDING. 정상 흐름은 동기라
+     * 즉시 PAID/FAILED 로 끝나므로, 오래 PENDING 이면 프로세스 크래시로 멈춘 것. [io.minishop.order.saga.SagaRecoveryJob] 용.
+     */
+    fun findByStatusAndCreatedAtBefore(status: OrderStatus, createdAt: Instant, pageable: Pageable): Page<Order>
 }

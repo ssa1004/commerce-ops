@@ -4,6 +4,7 @@ import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Tags
 import io.minishop.order.outbox.OutboxProperties
 import io.minishop.order.reconciliation.ReconciliationProperties
+import io.minishop.order.saga.SagaRecoveryProperties
 import org.apache.kafka.common.TopicPartition
 import org.slf4j.LoggerFactory
 import org.springframework.boot.context.properties.EnableConfigurationProperties
@@ -21,7 +22,7 @@ import org.springframework.util.backoff.FixedBackOff
 @Configuration
 @EnableScheduling
 @EnableKafka
-@EnableConfigurationProperties(OutboxProperties::class, ReconciliationProperties::class)
+@EnableConfigurationProperties(OutboxProperties::class, ReconciliationProperties::class, SagaRecoveryProperties::class)
 class KafkaConfig {
 
     /**

@@ -167,6 +167,14 @@ mini-shop:
     interval-ms: ${RECONCILIATION_INTERVAL_MS:60000}
     lookback-minutes: ${RECONCILIATION_LOOKBACK_MIN:30}
     batch-size: ${RECONCILIATION_BATCH_SIZE:200}
+  # 멈춘(stuck) SAGA 복구 — reserve~결제 사이 크래시로 PENDING 에 멈춘 주문을 찾아
+  # 영속 saga_step 을 역순 보상(release)하고 FAILED 로 마감. 정상 흐름은 동기라 안 걸린다.
+  saga-recovery:
+    enabled: ${SAGA_RECOVERY_ENABLED:true}
+    interval-ms: ${SAGA_RECOVERY_INTERVAL_MS:60000}
+    stuck-after-seconds: ${SAGA_RECOVERY_STUCK_AFTER_SEC:120}
+    batch-size: ${SAGA_RECOVERY_BATCH_SIZE:100}
+    max-compensation-attempts: ${SAGA_RECOVERY_MAX_COMP_ATTEMPTS:5}
   # adaptive concurrency limiter — payment / inventory 호출에 적용. backend 가 느려지면
   # latency 측정 (Gradient2 — TCP Vegas 영감) 으로 동시 진행 한도를 자동 축소해 cascade 차단.
   # 한도 초과 시 LimitExceededException → 503 + Retry-After 1s.
