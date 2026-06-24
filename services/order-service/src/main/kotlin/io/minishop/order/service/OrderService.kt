@@ -180,8 +180,16 @@ class OrderService(
                 SagaSteps.INVENTORY_RESERVE, SagaSteps.INVENTORY_RELEASE,
                 item.productId.toString(),
             )
-            inventoryClient.reserve(item.productId, orderId, item.quantity)
-            sagaStepLog.markDone(stepId)
+            try {
+                inventoryClient.reserve(item.productId, orderId, item.quantity)
+                sagaStepLog.markDone(stepId)
+            } catch (e: Exception) {
+                // reserve 가 동기적으로 예외를 던지면(재고 부족·한도 초과·인프라 오류 등) 이 item 의
+                // 예약은 *확정적으로* 안 잡힌 것이므로 ABORTED 로 표시해 보상(release) 대상에서 뺀다.
+                // (예외 없이 프로세스가 죽은 경우에만 STARTED 로 남아 복구 잡이 보상한다.)
+                sagaStepLog.markAborted(stepId)
+                throw e
+            }
         }
     }
 

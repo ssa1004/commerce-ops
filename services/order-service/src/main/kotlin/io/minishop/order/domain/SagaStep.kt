@@ -79,6 +79,11 @@ class SagaStep protected constructor() {
         this.status = SagaStepStatus.DONE
     }
 
+    /** 정방향 호출이 동기적으로 실패(확정적으로 아무것도 안 일어남) — 보상 대상에서 제외. */
+    fun markAborted() {
+        this.status = SagaStepStatus.ABORTED
+    }
+
     /** 보상 시도 직전 — 시도 횟수 증가(성공/실패 모두 1회로 집계). */
     fun beginCompensationAttempt() {
         this.compensationAttempts += 1

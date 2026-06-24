@@ -99,6 +99,20 @@ class CompensationRunnerTest {
         then(inventory).should(never()).release(anyLong(), anyLong())
     }
 
+    @Test
+    fun `ABORTED step 은 보상 대상이 아니다 — 재고부족 등으로 예약 안 잡힌 경우`() {
+        val step = doneStep(id = 1L, seq = 0, productId = 10L)
+        step.markAborted()
+        given(repo.findByOrderIdOrderBySeqDesc(ORDER_ID)).willReturn(listOf(step))
+
+        val summary = runner.compensate(ORDER_ID)
+
+        assertThat(summary.compensated).isZero()
+        assertThat(summary.failed).isZero()
+        assertThat(summary.exhausted).isZero()
+        then(inventory).should(never()).release(anyLong(), anyLong())
+    }
+
     private fun doneStep(id: Long, seq: Int, productId: Long): SagaStep {
         val step = SagaStep.started(
             ORDER_ID, seq, SagaSteps.INVENTORY_RESERVE, SagaSteps.INVENTORY_RELEASE, productId.toString(),

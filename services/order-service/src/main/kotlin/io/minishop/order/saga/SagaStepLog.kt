@@ -33,4 +33,14 @@ class SagaStepLog(
             repository.findById(stepId).ifPresent { it.markDone() }
         }
     }
+
+    /**
+     * 정방향 호출이 동기적으로 실패(예외) — 확정적으로 아무것도 안 일어났으므로 보상 대상에서 제외.
+     * (예외 없이 프로세스가 죽은 경우엔 STARTED 로 남아 복구 잡이 보상한다.)
+     */
+    fun markAborted(stepId: Long) {
+        tx.executeWithoutResult { _ ->
+            repository.findById(stepId).ifPresent { it.markAborted() }
+        }
+    }
 }
