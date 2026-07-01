@@ -50,8 +50,8 @@ class InventoryEventConsumer(
             return
         }
 
-        if (event.reservationId == null) {
-            log.warn("inventory event without reservationId, skipping: {}", event)
+        if (event.reservationId == null || event.orderId == null || event.productId == null) {
+            log.warn("inventory event missing reservationId/orderId/productId, skipping: {}", event)
             meterRegistry.counter(
                 "inbox.consume",
                 Tags.of("topic", "inventory.events", "outcome", "missing_key"),

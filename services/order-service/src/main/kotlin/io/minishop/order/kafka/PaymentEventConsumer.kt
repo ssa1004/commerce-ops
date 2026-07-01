@@ -39,8 +39,8 @@ class PaymentEventConsumer(
             return
         }
 
-        if (event.paymentId == null) {
-            log.warn("payment event without paymentId, skipping: {}", event)
+        if (event.paymentId == null || event.orderId == null) {
+            log.warn("payment event missing paymentId/orderId, skipping: {}", event)
             meterRegistry.counter(
                 "inbox.consume",
                 Tags.of("topic", "payment.events", "outcome", "missing_key"),
