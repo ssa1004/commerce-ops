@@ -1,15 +1,15 @@
 plugins {
 	java
-	kotlin("jvm") version "2.1.0"
-	kotlin("plugin.spring") version "2.1.0"
-	kotlin("plugin.jpa") version "2.1.0"
-	id("org.springframework.boot") version "3.5.14"
+	kotlin("jvm") version "2.4.0"
+	kotlin("plugin.spring") version "2.4.0"
+	kotlin("plugin.jpa") version "2.4.0"
+	id("org.springframework.boot") version "4.1.0"
 	id("io.spring.dependency-management") version "1.1.7"
 	// OpenAPI spec build-time export — generateOpenApiDocs 가 앱을 부팅한 뒤
 	// /v3/api-docs 를 fetch 해 docs/openapi/payment-service.yaml 로 떨어뜨린다.
 	id("org.springdoc.openapi-gradle-plugin") version "1.9.0"
 	// Kover — Kotlin code coverage. ./gradlew koverXmlReport / koverHtmlReport.
-	id("org.jetbrains.kotlinx.kover") version "0.9.1"
+	id("org.jetbrains.kotlinx.kover") version "0.9.8"
 }
 
 group = "io.minishop"
@@ -54,7 +54,7 @@ dependencies {
 	implementation("org.springframework.kafka:spring-kafka")
 
 	// OpenAPI / Swagger UI — REST API 를 OpenAPI 3 spec 으로 노출. Spring Boot 3.5 호환 2.8.x.
-	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.9")
+	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3")
 
 	// Kotlin runtime + reflect (Spring 의 reflection 기반 binding / DI)
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
